@@ -1,12 +1,12 @@
 export NNODES=1
-export DATA_PATH=data/string_task/stage1_level1/train.parquet
+export DATA_PATH=data/numerical_task/stage1_level1/train.parquet
 export N_SAMPLES=10
-export SAVE_PATH=data/string_task/stage1_level1/rollout.parquet
-export MODEL_PATH=../models/meta-llama/Llama-3.1-8B-Instruct-plain-prompt
+export SAVE_PATH=data/numerical_task/stage1_level1/rollout.parquet
+export MODEL_PATH=disk/models/Llama-3.1-8B-Instruct
 export TEMPERATURE=1.0
 export PROMPT_LENGTH=1024
 export RESPONSE_LENGTH=8192
-export RFT_DATA_SAVE_PATH=data/string_task/stage1_level1/rft_data
+export RFT_DATA_SAVE_PATH=data/numerical_task/stage1_level1/rft_data
 
 bash examples/generation/run_string.sh
 

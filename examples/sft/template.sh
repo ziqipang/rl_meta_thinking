@@ -34,10 +34,11 @@ torchrun ${STANDALONE} --nnodes=${nnodes} --nproc_per_node=8 \
     data.train_batch_size=${bsz} \
     data.micro_batch_size_per_gpu=1 \
     model.partial_pretrain=${model_path} \
+    trainer.default_local_dir=${save_dir} \
     trainer.default_hdfs_dir=${save_dir} \
     trainer.project_name=${project_name} \
     trainer.experiment_name=${experiment_name} \
-    trainer.logger=['console'] \
+    trainer.logger=['console','wandb'] \
     trainer.total_epochs=${epochs} \
     ulysses_sequence_parallel_size=${sp_size} \
     use_remove_padding=true

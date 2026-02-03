@@ -58,7 +58,13 @@ func_statistics = defaultdict(lambda: 0)
 for gen_path in all_gen_path:
     dataset = load_dataset("parquet", data_files=gen_path)['train']
 
-    dataset = dataset.map(filter_incorrect, num_proc=4, remove_columns=['responses'])
+    filtered_dataset = []
+    for example in dataset:
+        filtered_example = filter_incorrect(example)
+        import pdb; pdb.set_trace()
+        # Optionally, you may need to remove the 'responses' column, as the original map call had remove_columns
+        filtered_dataset.append(filtered_example)
+    dataset = filtered_dataset
     # dataset = dataset.filter(lambda x: len(x['responses']) > 0)
 
     for data, raw_data in zip(dataset, raw_dataset):

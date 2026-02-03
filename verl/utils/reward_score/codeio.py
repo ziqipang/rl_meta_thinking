@@ -163,6 +163,23 @@ def extract_last_complete_json(s):
         res = sub_extract_last_complete_json(processed_box_content)
     return res
 
+def extract_answer(s):
+    """ Split the <answer>...</answer> block and return the answer. Keep only the numbers and remove the double quotes and spaces.
+    """
+    # 1) extract <answer>...</answer> (non-greedy, across newlines)
+    m = re.search(r"<answer>(.*?)</answer>", s, flags=re.DOTALL | re.IGNORECASE)
+    if not m:
+        return ""  # or raise ValueError("No <answer>...</answer> block found")
+
+    inner = m.group(1)
+
+    # 2) remove quotes + whitespace
+    inner = inner.replace('"', '')
+    inner = re.sub(r"\s+", "", inner)
+
+    return {'output': inner}
+
+
 def extract_last_code_block(response_text: str):
     """
     Extracts the content of the last Markdown code block from a string.
@@ -367,7 +384,9 @@ def compute_score(solution_str, ground_truth, task="codeio-backward"):
     print(f"[Model Response]\n{solution_str}")
     print(f"[Ground Truth]\nRef Output: {ground_truth['ref_output']}\nRef Input: {ground_truth['ref_input']}")
 
-    if task.startswith('backward') or task.startswith('forward') or (task.startswith('induction') and 'json' in task):
+    if '<answer>' in solution_str:
+        extraction = extract_answer
+    elif task.startswith('backward') or task.startswith('forward') or (task.startswith('induction') and 'json' in task):
         extraction = extract_last_complete_json
     elif task.startswith('induction'):
         extraction = extract_last_code_block

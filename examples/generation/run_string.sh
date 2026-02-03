@@ -16,7 +16,7 @@ python3 -m verl.trainer.main_generation \
     data.prompt_key=prompt \
     data.n_samples=$N_SAMPLES \
     data.output_path=$SAVE_PATH \
-    data.batch_size=100000000 \
+    data.batch_size=2048 \
     model.path=$MODEL_PATH \
     +model.trust_remote_code=True \
     rollout.name=vllm \
