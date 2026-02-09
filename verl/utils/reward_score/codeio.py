@@ -305,55 +305,72 @@ def compute_score_induction(solution, ground_truth):
     return 1, 1
 
 
+# def compute_score_backward(solution, ground_truth):
+#     breakpoint()
+#     from sandbox_fusion import run_code, RunCodeRequest
+
+#     ref_input = ground_truth['ref_input']
+#     ref_code = ground_truth['ref_code']
+#     ref_output = ground_truth['ref_output']
+
+#     if not isinstance(ref_input, list):
+#         ref_input = [ref_input]
+#     if not isinstance(ref_output, list):
+#         ref_output = [ref_output]
+
+#     if not isinstance(solution, dict):
+#         print("The input parameter is not a valid JSON object!")
+#         return -1, 0
+
+#     exact_match = True
+#     for k, v in ref_input.items():
+#         if k in solution and solution[k] == v:
+#             continue
+#         exact_match = False
+#     if exact_match:
+#         return 1, 1
+
+#     # Run the code with the input
+#     code = template_check_input.format(solution_prefix=solution_prefix,
+#                                        refcode=ref_code,
+#                                        funcname=ground_truth['funcname'],
+#                                        io={
+#                                            'input': solution,
+#                                            'output': ref_output
+#                                        },
+#                                        bypass="False")
+#     breakpoint()
+#     try:
+#         ret = run_code(RunCodeRequest(code=code, language='python', client_timeout=5))
+#     except:
+#         return 0, 0
+#     if ret.status != "Success":
+#         print(
+#             f"[Execution Output]\n  Message: {ret.message}\nSTDOUT: {ret.run_result.stdout}\nSTDERR: {ret.run_result.stderr}"
+#         )
+#         print("[Final Score]: 0")
+#         return 0, 0
+#     else:
+#         print(
+#             f"[Execution Output]\n  Message: {ret.message}\nSTDOUT: {ret.run_result.stdout}\nSTDERR: {ret.run_result.stderr}"
+#         )
+#         print("[Final Score]: 1")
+#         return 1, 1
+
+
 def compute_score_backward(solution, ground_truth):
-    from sandbox_fusion import run_code, RunCodeRequest
-
-    ref_input = ground_truth['ref_input']
-    ref_code = ground_truth['ref_code']
-    ref_output = ground_truth['ref_output']
-
-    if not isinstance(ref_input, list):
-        ref_input = [ref_input]
-    if not isinstance(ref_output, list):
-        ref_output = [ref_output]
-
-    if not isinstance(solution, dict):
-        print("The input parameter is not a valid JSON object!")
-        return -1, 0
-
-    exact_match = True
-    for k, v in ref_input.items():
-        if k in solution and solution[k] == v:
-            continue
-        exact_match = False
-    if exact_match:
+    ref_input = ground_truth['ref_input']['x']
+    acc = is_close(str(solution), str(ref_input))
+    if acc:
+        print("[Match] Correct!")
+        print("[Final Score]: 1")
         return 1, 1
-
-    # Run the code with the input
-    code = template_check_input.format(solution_prefix=solution_prefix,
-                                       refcode=ref_code,
-                                       funcname=ground_truth['funcname'],
-                                       io={
-                                           'input': solution,
-                                           'output': ref_output
-                                       },
-                                       bypass="False")
-    try:
-        ret = run_code(RunCodeRequest(code=code, language='python', client_timeout=5))
-    except:
-        return 0, 0
-    if ret.status != "Success":
+    else:
         print(
-            f"[Execution Output]\n  Message: {ret.message}\nSTDOUT: {ret.run_result.stdout}\nSTDERR: {ret.run_result.stderr}"
+            f"[Mismatch] Given the output {json.dumps(ground_truth['ref_output'])}, your predicted input is {json.dumps(solution)}, ground truth is {json.dumps(ref_input)}."
         )
         print("[Final Score]: 0")
         return 0, 0
-    else:
-        print(
-            f"[Execution Output]\n  Message: {ret.message}\nSTDOUT: {ret.run_result.stdout}\nSTDERR: {ret.run_result.stderr}"
-        )
-        print("[Final Score]: 1")
-        return 1, 1
 
 
 def compute_score_forward(solution, ground_truth):
@@ -407,10 +424,10 @@ def compute_score(solution_str, ground_truth, task="codeio-backward"):
 
     try:
         if task.startswith('backward'):
-            if "input" not in extracted:
+            if "output" not in extracted:
                 print("No field 'input' in the extracted JSON!")
                 return -1, 0
-            input_param = extracted['input']
+            input_param = extracted['output']
             return compute_score_backward(input_param, ground_truth)
         elif task.startswith('forward'):
             if "output" not in extracted:

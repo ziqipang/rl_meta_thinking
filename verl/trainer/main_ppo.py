@@ -64,7 +64,8 @@ def run_ppo(config) -> None:
             'env_vars': {
                 'TOKENIZERS_PARALLELISM': 'true',
                 'NCCL_DEBUG': 'WARN',
-                'VLLM_LOGGING_LEVEL': 'WARN'
+                'VLLM_LOGGING_LEVEL': 'WARN',
+                'RAY_DEBUG': 'legacy'
             }
         })
 
@@ -159,14 +160,16 @@ class TaskRunner:
                                        num_examine=0,
                                        compute_score=compute_score,
                                        penalize_overlong=config.reward_model.get('penalize_overlong', False),
-                                       max_response_length=config.data.max_response_length)
+                                       max_response_length=config.data.max_response_length
+                                       )
 
         # Note that we always use function-based RM for validation
         val_reward_fn = reward_manager_cls(tokenizer=tokenizer,
                                            num_examine=1,
                                            compute_score=compute_score,
                                            penalize_overlong=config.reward_model.get('penalize_overlong', False),
-                                           max_response_length=config.data.max_response_length)
+                                           max_response_length=config.data.max_response_length
+                                        )
 
         resource_pool_manager = ResourcePoolManager(resource_pool_spec=resource_pool_spec, mapping=mapping)
 

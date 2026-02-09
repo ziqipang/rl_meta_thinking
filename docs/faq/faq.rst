@@ -61,4 +61,45 @@ If in doubt, print this env var in each rank to make sure it is properly set.
 Checkpoints
 ------------------------
 
-If you want to convert the model checkpoint into huggingface safetensor format, please refer to ``scripts/model_merger.py``.
+How to convert RL FSDP checkpoints to Hugging Face?
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+RL training saves FSDP-sharded checkpoints under:
+
+.. code:: text
+
+    <SAVE_DIR>/global_step_<N>/actor/
+      model_world_size_<W>_rank_0.pt
+      model_world_size_<W>_rank_1.pt
+      ...
+      huggingface/          # config + tokenizer/processor (no weights yet)
+
+The latest saved step is tracked at:
+
+.. code:: bash
+
+    cat <SAVE_DIR>/latest_checkpointed_iteration.txt
+
+To merge the sharded weights into a standard Hugging Face checkpoint, run:
+
+.. code:: bash
+
+    python3 scripts/model_merger.py --local_dir <SAVE_DIR>/global_step_<N>/actor
+
+This writes the merged weights into:
+
+.. code:: text
+
+    <SAVE_DIR>/global_step_<N>/actor/huggingface/
+
+Then you can load it with Transformers as usual, e.g.:
+
+.. code:: python
+
+    from transformers import AutoModelForCausalLM
+    model = AutoModelForCausalLM.from_pretrained("<...>/actor/huggingface")
+
+Notes:
+
+- ``scripts/model_merger.py`` currently supports pure FSDP (no tensor parallel); it will error for FSDP+TP checkpoints.
+- You can optionally upload after merging via ``--hf_upload_path <org_or_user>/<repo>``.

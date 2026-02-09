@@ -90,6 +90,12 @@ hf download --repo-type dataset --local-dir data/string_task/stage1_level1/rft_d
    ```
 
    The script samples `N_SAMPLES` responses per prompt and stores them in `data/string_task/stage1_level1/rollout.parquet`. And then filters the rollouts based on the accuracy and emits `train.parquet` / `test.parquet` splits under `data/string_task/stage1_level1/rft_data/`.
+
+   To visualize a rollout parquet as an HTML table (prompt / reward info / referenced `func_XX` code / responses), run:
+
+   ```bash
+   python scripts/rollout_to_html.py data/string_task/stage1_level1/rollout.parquet -o rollout.html
+   ```
 </details>
 
 Then train the `Llama 3.1 8B Instruct` model with the RFT data:
