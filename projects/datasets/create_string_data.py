@@ -1,14 +1,12 @@
 """
-24 Bijective Digit-String Operations for RL Research
-===============================================
-All functions are invertible: given output, the input can be uniquely recovered.
-Single argument (digit string) only. Organized by difficulty for LLM mental simulation.
+Digit-String Operations for RL Research
+======================================
 
-Difficulty is estimated based on:
-- Number of characters an LLM must track simultaneously
-- Non-locality of transformations
-- Mathematical complexity of index/character mappings
-- Number of conceptual steps required
+This file defines:
+- `func_00`..`func_23`: bijective digit-string transforms (unique inverse).
+- `func_24+`: non-bijective digit-string transforms (many-to-one).
+
+All functions take a single digit string and return a string.
 """
 
 from __future__ import annotations
@@ -427,28 +425,223 @@ def func_23(s):
     
     return ''.join(result)
 
+# ==================================================
+# NON-BIJECTIVE FUNCTIONS (many-to-one)
+# ==================================================
+
+def _digitwise_map(s: str, f: Callable[[int], int]) -> str:
+    out: list[str] = []
+    for ch in s:
+        if "0" <= ch <= "9":
+            out.append(str(f(ord(ch) - ord("0"))))
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+# ---- Family A: Digitwise many-to-one collapses ----
+
+def func_24(s):
+    """PARITY01: y[i] = d_i % 2 -> outputs only {0,1}."""
+    return _digitwise_map(s, lambda d: d % 2)
+
+
+def func_25(s):
+    """MOD3: y[i] = d_i % 3 -> outputs {0,1,2}."""
+    return _digitwise_map(s, lambda d: d % 3)
+
+
+def func_26(s):
+    """MOD5: y[i] = d_i % 5 -> outputs {0,1,2,3,4}."""
+    return _digitwise_map(s, lambda d: d % 5)
+
+
+def func_27(s):
+    """HALF_FLOOR: y[i] = floor(d_i/2) -> outputs {0,1,2,3,4}."""
+    return _digitwise_map(s, lambda d: d // 2)
+
+
+def func_28(s):
+    """CLAMP5: y[i] = min(d_i, 5) -> outputs {0,1,2,3,4,5}."""
+    return _digitwise_map(s, lambda d: min(d, 5))
+
+
+def func_29(s):
+    """ABS_FROM5: y[i] = abs(d_i - 5) -> outputs {0,1,2,3,4,5}."""
+    return _digitwise_map(s, lambda d: abs(d - 5))
+
+
+def func_30(s):
+    """MIRROR_MIN: y[i] = min(d_i, 9 - d_i) -> outputs {0,1,2,3,4}."""
+    return _digitwise_map(s, lambda d: min(d, 9 - d))
+
+
+def func_31(s):
+    """SQUARE_MOD10: y[i] = (d_i*d_i) % 10 -> outputs {0,1,4,5,6,9}."""
+    return _digitwise_map(s, lambda d: (d * d) % 10)
+
+
+def func_32(s):
+    """BUCKET3_FLOOR: y[i] = 3*floor(d_i/3) -> outputs {0,3,6,9}."""
+    return _digitwise_map(s, lambda d: 3 * (d // 3))
+
+
+def func_33(s):
+    """GCD10_MOD10: y[i] = gcd(d_i, 10) % 10 -> outputs {0,1,2,5}."""
+    return _digitwise_map(s, lambda d: gcd(d, 10) % 10)
+
+
+# ---- Family B: Positional masking ----
+
+def func_34(s):
+    """MASK_EVEN_IDX_ZERO (0-indexed): set indices i%2==0 to '0'."""
+    out = list(s)
+    for i in range(0, len(out), 2):
+        out[i] = "0"
+    return "".join(out)
+
+
+def func_35(s):
+    """MASK_MOD3_EQ0_ZERO (0-indexed): set indices i%3==0 to '0'."""
+    out = list(s)
+    for i in range(0, len(out), 3):
+        out[i] = "0"
+    return "".join(out)
+
+
+def func_36(s):
+    """MASK_FIRST_HALF_ZERO: set first ceil(n/2) digits to '0'."""
+    n = len(s)
+    k = (n + 1) // 2
+    return ("0" * k) + s[k:]
+
+
+# ---- Family C: Structured downsample/aggregate within pairs ----
+
+def func_37(s):
+    """REPEAT_EVEN_TO_ODD: within each pair (2i,2i+1), copy even digit to odd."""
+    out = list(s)
+    for i in range(0, len(out) - 1, 2):
+        out[i + 1] = out[i]
+    return "".join(out)
+
+
+def func_38(s):
+    """PAIR_MAX_REPEAT: within each pair, output (max(a,b), max(a,b))."""
+    out = list(s)
+    for i in range(0, len(out) - 1, 2):
+        a = ord(out[i]) - ord("0")
+        b = ord(out[i + 1]) - ord("0")
+        m = str(max(a, b))
+        out[i] = m
+        out[i + 1] = m
+    return "".join(out)
+
+
+def func_39(s):
+    """PAIR_MIN_REPEAT: within each pair, output (min(a,b), min(a,b))."""
+    out = list(s)
+    for i in range(0, len(out) - 1, 2):
+        a = ord(out[i]) - ord("0")
+        b = ord(out[i + 1]) - ord("0")
+        m = str(min(a, b))
+        out[i] = m
+        out[i + 1] = m
+    return "".join(out)
+
+
+# ---- Family D: Permutation-invariance via sorting ----
+
+def func_40(s):
+    """SORT_PAIRS_ASC: sort digits inside each length-2 block ascending."""
+    out = list(s)
+    for i in range(0, len(out) - 1, 2):
+        a, b = out[i], out[i + 1]
+        if a > b:
+            out[i], out[i + 1] = b, a
+    return "".join(out)
+
+
+def func_41(s):
+    """SORT_TRIPLES_ASC: sort digits inside each length-3 block ascending."""
+    out: list[str] = []
+    for i in range(0, len(s), 3):
+        block = sorted(s[i : i + 3])
+        out.extend(block)
+    return "".join(out)
+
+
+def func_42(s):
+    """SORT_GLOBAL_ASC: sort all digits globally ascending."""
+    return "".join(sorted(s))
+
+
+# ---- Family E: Neighbor-coupled lossy transform ----
+
+def func_43(s):
+    """ADJ_SUM_MOD10: y[i] = (d_i + d_{i+1}) % 10 for i=0..n-2 (length n-1)."""
+    if len(s) < 2:
+        return ""
+    out: list[str] = []
+    for i in range(len(s) - 1):
+        a = ord(s[i]) - ord("0")
+        b = ord(s[i + 1]) - ord("0")
+        out.append(str((a + b) % 10))
+    return "".join(out)
+
 
 # ==================================================
 # Function Name Mapping (identity by default)
 # ==================================================
 
-func_name_mapping = {f"func_{i:02d}": f"func_{i:02d}" for i in range(24)}
+NUM_BIJECTIVE_FUNCS = 24  # func_00..func_23
+NUM_NONBIJECTIVE_FUNCS = 20  # func_24..func_43
+NUM_TOTAL_FUNCS = NUM_BIJECTIVE_FUNCS + NUM_NONBIJECTIVE_FUNCS
 
+func_name_mapping = {f"func_{i:02d}": f"func_{i:02d}" for i in range(NUM_TOTAL_FUNCS)}
 
-def _build_function_sets() -> tuple[dict[str, Callable[[str], str]], dict[str, Callable[[str], str]], dict[str, Callable[[str], str]]]:
+BIJECTIVE_FUNCTION_NAMES = [f"func_{i:02d}" for i in range(NUM_BIJECTIVE_FUNCS)]
+NONBIJECTIVE_FUNCTION_NAMES = [f"func_{i:02d}" for i in range(NUM_BIJECTIVE_FUNCS, NUM_TOTAL_FUNCS)]
+
+# Default function splits (can be overridden via CLI flags).
+DEFAULT_TRAIN_FUNCTION_NAMES = [f"func_{i:02d}" for i in range(0, 18)] + [f"func_{i:02d}" for i in range(24, 38)]
+DEFAULT_TEST_FUNCTION_NAMES = [f"func_{i:02d}" for i in range(18, 24)] + [f"func_{i:02d}" for i in range(38, 44)]
+
+def _build_function_sets(
+    *,
+    function_kind: str,
+) -> tuple[dict[str, Callable[[str], str]], dict[str, Callable[[str], str]], dict[str, Callable[[str], str]]]:
     """Build `{name -> callable}` maps for all/train/eval function pools.
 
-    - `all_set`: `func_00`..`func_23`
-    - `train_set`: `func_00`..`func_17`
-    - `eval_set`: `func_18`..`func_23`
+    `function_kind`:
+      - `bijective`: only `func_00`..`func_23`
+      - `nonbijective`: only `func_24+`
+      - `both`: union of both sets
+
+    Default split:
+      - bijective train: `func_00`..`func_17`
+      - bijective test: `func_18`..`func_23`
+      - nonbijective train: `func_24`..`func_33` (Family A)
+      - nonbijective test: `func_34`..`func_43` (Families B..E)
     """
-    all_set: dict[str, Callable[[str], str]] = {f"func_{i:02d}": globals()[f"func_{i:02d}"] for i in range(24)}
+    kind = function_kind.lower().strip()
+    if kind not in {"bijective", "nonbijective", "both"}:
+        raise ValueError(f"Unknown function_kind: {function_kind!r}")
 
-    def _idx(name: str) -> int:
-        return int(name.split("_", 1)[1])
+    if kind == "bijective":
+        allowed_names = set(BIJECTIVE_FUNCTION_NAMES)
+    elif kind == "nonbijective":
+        allowed_names = set(NONBIJECTIVE_FUNCTION_NAMES)
+    else:
+        allowed_names = set(BIJECTIVE_FUNCTION_NAMES) | set(NONBIJECTIVE_FUNCTION_NAMES)
 
-    train_set: dict[str, Callable[[str], str]] = {k: v for k, v in all_set.items() if _idx(k) <= 17}
-    eval_set: dict[str, Callable[[str], str]] = {k: v for k, v in all_set.items() if _idx(k) >= 18}
+    all_set: dict[str, Callable[[str], str]] = {name: globals()[name] for name in sorted(allowed_names)}
+
+    train_selected = [n for n in DEFAULT_TRAIN_FUNCTION_NAMES if n in allowed_names]
+    test_selected = [n for n in DEFAULT_TEST_FUNCTION_NAMES if n in allowed_names]
+
+    train_set = {name: all_set[name] for name in train_selected}
+    eval_set = {name: all_set[name] for name in test_selected}
     return all_set, train_set, eval_set
 
 
@@ -479,7 +672,10 @@ def generate_full_code(expr: str, *, stage: int, custom_functions: dict[str, Cal
     used_funcs = {fname for fname in custom_functions.keys() if fname in expr}
     code_parts: list[str] = []
     if stage == 1:
+        code_parts.append("from __future__ import annotations")
         code_parts.append("from math import gcd")
+        if any(fname in used_funcs for fname in (f"func_{i:02d}" for i in range(24, 34))):
+            code_parts.append(inspect.getsource(_digitwise_map))
         for fname in sorted(used_funcs):
             code_parts.append(inspect.getsource(custom_functions[fname]))
 
@@ -549,17 +745,38 @@ if __name__ == "__main__":
     parser.add_argument("--stage", type=int, required=True)
     parser.add_argument("--split", type=str, required=True, choices=["train", "test"])
     parser.add_argument("--direction", type=str, default="forward", choices=["forward", "backward"])
+    parser.add_argument(
+        "--function_kind",
+        type=str,
+        default="bijective",
+        choices=["bijective", "nonbijective", "both"],
+        help="Which function family to sample from.",
+    )
+    parser.add_argument(
+        "--stage1_pool",
+        type=str,
+        default="all",
+        choices=["all", "split"],
+        help="For --stage 1, sample from all selected functions or the train/test split pool.",
+    )
     parser.add_argument("--min_level", type=int, default=1)
     parser.add_argument("--max_level", type=int, default=1)
     parser.add_argument("--data_num", type=int, default=5000)
     args = parser.parse_args()
 
-    all_set, train_set, eval_set = _build_function_sets()
+    all_set, train_set, eval_set = _build_function_sets(
+        function_kind=args.function_kind,
+    )
 
-    if args.stage == 1:
+    if args.stage == 1 and args.stage1_pool == "all":
         custom_functions = all_set
     else:
         custom_functions = train_set if args.split == "train" else eval_set
+
+    if args.direction == "backward":
+        uses_nonbijective = any(name in NONBIJECTIVE_FUNCTION_NAMES for name in custom_functions.keys())
+        if uses_nonbijective:
+            raise ValueError("--direction backward requires bijective functions only (unique inverse).")
 
     depths = list(range(args.min_level, args.max_level + 1))
     if args.data_num % len(depths) != 0:

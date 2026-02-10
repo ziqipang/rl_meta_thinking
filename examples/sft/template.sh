@@ -24,8 +24,8 @@ fi
 
 torchrun ${STANDALONE} --nnodes=${nnodes} --nproc_per_node=8 \
      -m verl.trainer.fsdp_sft_trainer \
-    data.train_files=${train_files} \
-    data.val_files=${val_files} \
+    data.train_files="${train_files}" \
+    data.val_files="${val_files}" \
     data.prompt_key=prompt \
     data.response_key=response \
     data.max_length=${max_length} \
