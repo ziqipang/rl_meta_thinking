@@ -48,6 +48,13 @@ BACKWARD_PROMPT = (
     "Please reason between the XML tags of <think> </think>, and put the answer, which is ONLY the result string between <answer> </answer> tags. The final response should look like <think> ... </think><answer> ... </answer>"
 )
 
+PREIMAGE_PROMPT = (
+    "You are given a code:\n\n{code}\n\n"
+    "You are told that `main_solution(x)` returns the string \"{output}\".\n"
+    "Find ONE possible digit-string input `x` such that `main_solution(x)` returns exactly that string.\n\n"
+    "Please reason between the XML tags of <think> </think>, and put the answer, which is ONLY the result string between <answer> </answer> tags. The final response should look like <think> ... </think><answer> ... </answer>"
+)
+
 # ==================================================
 # TIER 1: EASY (Direct pattern, few steps)
 # ==================================================
@@ -773,10 +780,13 @@ if __name__ == "__main__":
     else:
         custom_functions = train_set if args.split == "train" else eval_set
 
+    uses_nonbijective = any(name in NONBIJECTIVE_FUNCTION_NAMES for name in custom_functions.keys())
+    data_source_prefix = "codeio-nb" if uses_nonbijective else "codeio"
+
     if args.direction == "backward":
-        uses_nonbijective = any(name in NONBIJECTIVE_FUNCTION_NAMES for name in custom_functions.keys())
-        if uses_nonbijective:
-            raise ValueError("--direction backward requires bijective functions only (unique inverse).")
+        backward_mode = "preimage" if uses_nonbijective else "unique"
+    else:
+        backward_mode = "none"
 
     depths = list(range(args.min_level, args.max_level + 1))
     if args.data_num % len(depths) != 0:
@@ -809,11 +819,15 @@ if __name__ == "__main__":
             full_code = generate_full_code(expr, stage=args.stage, custom_functions=custom_functions)
 
             if args.direction == "forward":
-                data_source = f"codeio-forward-incomplete-depth{depth}"
+                data_source = f"{data_source_prefix}-forward-incomplete-depth{depth}"
                 prompt_content = FORWARD_PROMPT.format(code=full_code, input=feasible_input)
             else:
-                data_source = f"codeio-backward-incomplete-depth{depth}"
-                prompt_content = BACKWARD_PROMPT.format(code=full_code, output=output)
+                if backward_mode == "unique":
+                    data_source = f"{data_source_prefix}-backward-incomplete-depth{depth}"
+                    prompt_content = BACKWARD_PROMPT.format(code=full_code, output=output)
+                else:
+                    data_source = f"{data_source_prefix}-preimage-incomplete-depth{depth}"
+                    prompt_content = PREIMAGE_PROMPT.format(code=full_code, output=output)
 
             sample = {
                 "data_source": data_source,

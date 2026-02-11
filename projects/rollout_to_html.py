@@ -9,20 +9,36 @@ from dataclasses import dataclass
 from html import escape as html_escape
 from pathlib import Path
 from typing import Any
+from functools import lru_cache
 
 
 _FUNC_RE = re.compile(r"\breturn\s+(func_\d+)\s*\(")
 _FUNC_FALLBACK_RE = re.compile(r"\bfunc_\d+\b")
+_ANSWER_RE = re.compile(r"<answer>(.*?)</answer>", flags=re.DOTALL | re.IGNORECASE)
+
+_CODEIO_FUNC_ENV: dict[str, object] | None = None
+try:  # best-effort: only needed for inverse/preimage evaluation
+    from projects.datasets import create_string_data as _create_string_data  # type: ignore
+
+    _CODEIO_FUNC_ENV = {
+        name: getattr(_create_string_data, name)
+        for name in dir(_create_string_data)
+        if re.fullmatch(r"func_\d{2}", name) is not None
+    }
+except Exception:
+    _CODEIO_FUNC_ENV = None
 
 
 @dataclass(frozen=True)
 class RowGroup:
     example_index: int
+    data_source: str
     prompt_content: str
     reward_info: str
     func_name: str | None
     func_code: str
     responses: list[str]
+    inverse_exec_info: list[str] | None
 
 
 def _extract_prompt_content(prompt: Any) -> str:
@@ -101,6 +117,77 @@ def _format_reward_info(reward_model: Any) -> str:
 
     return f"ground_truth: {ground_truth}"
 
+def _parse_ground_truth(reward_model: Any) -> dict[str, Any] | None:
+    if not isinstance(reward_model, dict):
+        return None
+    ground_truth = reward_model.get("ground_truth")
+    if isinstance(ground_truth, str):
+        try:
+            gt = json.loads(ground_truth)
+        except json.JSONDecodeError:
+            return None
+        return gt if isinstance(gt, dict) else None
+    if isinstance(ground_truth, dict):
+        return ground_truth
+    return None
+
+
+def _is_inverse_task(data_source: str) -> bool:
+    # Our RL datasets use:
+    # - codeio-*-backward-... (unique inverse; bijective only)
+    # - codeio-nb-*-preimage-... (non-bijective backward; any valid preimage)
+    return "-backward-" in data_source or "-preimage-" in data_source
+
+
+def _extract_model_answer_text(response: str) -> str | None:
+    m = _ANSWER_RE.search(response)
+    if not m:
+        return None
+    inner = m.group(1)
+    inner = inner.replace('"', "")
+    inner = re.sub(r"\s+", "", inner)
+    return inner
+
+
+@lru_cache(maxsize=256)
+def _build_ref_fn(ref_code: str, funcname: str) -> object:
+    env: dict[str, object] = {"__builtins__": __builtins__}
+    if _CODEIO_FUNC_ENV is not None:
+        env.update(_CODEIO_FUNC_ENV)
+    exec(ref_code, env, env)
+    return env[funcname]
+
+
+def _inverse_exec_block(gt: dict[str, Any], response: str) -> str:
+    pred_x = _extract_model_answer_text(response)
+    if pred_x is None:
+        return "pred_x: <missing <answer>...</answer>>"
+
+    ref_output = gt.get("ref_output")
+    ref_code = gt.get("ref_code")
+    funcname = gt.get("funcname", "main_solution")
+    if not isinstance(ref_code, str) or not ref_code.strip():
+        return f"pred_x: {json.dumps(pred_x)}\nerror: missing ref_code"
+
+    if _CODEIO_FUNC_ENV is None:
+        return f"pred_x: {json.dumps(pred_x)}\nerror: could not import projects.datasets.create_string_data (func_XX env)"
+
+    try:
+        ref_fn = _build_ref_fn(ref_code, str(funcname))
+        if not callable(ref_fn):
+            return f"pred_x: {json.dumps(pred_x)}\nerror: {funcname!r} is not callable after exec(ref_code)"
+        execed_output = ref_fn(str(pred_x))
+    except Exception as e:
+        return f"pred_x: {json.dumps(pred_x)}\nerror: exec/run failed: {e!r}"
+
+    match = execed_output == ref_output
+    return (
+        f"pred_x: {json.dumps(pred_x)}\n"
+        f"exec_output: {json.dumps(execed_output, ensure_ascii=False)}\n"
+        f"target_output: {json.dumps(ref_output, ensure_ascii=False)}\n"
+        f"match: {match}"
+    )
+
 
 def _tqdm(iterable: Any, *, total: int | None = None, desc: str | None = None) -> Any:
     try:
@@ -124,6 +211,7 @@ def _load_dataset(parquet_path: Path) -> Any:
 def _build_groups(
     dataset: Any,
     funcs_source: dict[str, str],
+    funcs_label: str,
     start: int,
     limit: int | None,
     max_responses: int | None,
@@ -135,13 +223,15 @@ def _build_groups(
     for i in _tqdm(range(start, end), total=max(0, end - start), desc="Rendering"):
         row = dataset[int(i)]
 
+        data_source = str(row.get("data_source") or "")
         prompt_content = _extract_prompt_content(row.get("prompt"))
         func_name = _extract_func_name(prompt_content)
         func_code = funcs_source.get(func_name or "", "")
         if not func_code:
-            func_code = f"# Could not locate {func_name or 'function'} in funcs.py"
+            func_code = f"# Could not locate {func_name or 'function'} in {funcs_label}"
 
-        reward_info = _format_reward_info(row.get("reward_model"))
+        reward_model = row.get("reward_model")
+        reward_info = _format_reward_info(reward_model)
 
         responses_raw = row.get("responses") or []
         if isinstance(responses_raw, list):
@@ -155,14 +245,24 @@ def _build_groups(
         if not responses:
             responses = [""]
 
+        inverse_exec_info: list[str] | None = None
+        if _is_inverse_task(data_source):
+            gt = _parse_ground_truth(reward_model)
+            if gt is None:
+                inverse_exec_info = ["error: could not parse reward_model.ground_truth"] * len(responses)
+            else:
+                inverse_exec_info = [_inverse_exec_block(gt, r) for r in responses]
+
         groups.append(
             RowGroup(
                 example_index=i,
+                data_source=data_source,
                 prompt_content=prompt_content,
                 reward_info=reward_info,
                 func_name=func_name,
                 func_code=func_code,
                 responses=responses,
+                inverse_exec_info=inverse_exec_info,
             )
         )
 
@@ -185,13 +285,18 @@ def _render_html(groups: list[RowGroup], title: str) -> str:
         func_title = g.func_name or ""
         func_cell = f"{func_title}\n\n{g.func_code}".strip()
         func_td = f"<td rowspan='{rowspan}' class='func'>{_cell_pre(func_cell)}</td>"
+        ds_td = f"<td rowspan='{rowspan}' class='ds'>{_cell_pre(g.data_source)}</td>"
 
         for j, resp in enumerate(g.responses):
             resp_td = f"<td class='resp'>{_cell_pre(resp)}</td>"
+            inv = ""
+            if g.inverse_exec_info is not None:
+                inv = g.inverse_exec_info[j] if j < len(g.inverse_exec_info) else ""
+            inv_td = f"<td class='inv'>{_cell_pre(inv)}</td>"
             if j == 0:
-                rows_html.append(f"<tr>{idx_td}{prompt_td}{reward_td}{func_td}{resp_td}</tr>")
+                rows_html.append(f"<tr>{idx_td}{ds_td}{prompt_td}{reward_td}{func_td}{resp_td}{inv_td}</tr>")
             else:
-                rows_html.append(f"<tr>{resp_td}</tr>")
+                rows_html.append(f"<tr>{resp_td}{inv_td}</tr>")
 
     styles = """
     :root { color-scheme: light dark; }
@@ -202,10 +307,12 @@ def _render_html(groups: list[RowGroup], title: str) -> str:
     th, td { border: 1px solid rgba(127,127,127,0.35); vertical-align: top; padding: 8px; }
     th { position: sticky; top: 0; background: Canvas; z-index: 1; text-align: left; }
     td.idx { width: 70px; text-align: right; font-variant-numeric: tabular-nums; }
-    td.prompt { width: 33%; }
+    td.ds { width: 14%; }
+    td.prompt { width: 26%; }
     td.reward { width: 16%; }
     td.func { width: 25%; }
-    td.resp { width: 26%; }
+    td.resp { width: 19%; }
+    td.inv { width: 20%; }
     pre.cell-pre { margin: 0; white-space: pre-wrap; word-break: break-word; max-height: 340px; overflow: auto; }
     """
 
@@ -224,10 +331,12 @@ def _render_html(groups: list[RowGroup], title: str) -> str:
     <thead>
       <tr>
         <th>idx</th>
+        <th>data_source</th>
         <th>prompt</th>
         <th>reward info</th>
         <th>func code</th>
         <th>response</th>
+        <th>inverse exec</th>
       </tr>
     </thead>
     <tbody>
@@ -252,8 +361,11 @@ def main() -> int:
     parser.add_argument(
         "--funcs",
         type=Path,
-        default=Path("funcs.py"),
-        help="Path to funcs.py containing func_XX definitions (default: funcs.py).",
+        default=(Path(__file__).resolve().parent / "datasets" / "create_string_data.py"),
+        help=(
+            "Path to a python file containing func_XX definitions "
+            "(default: projects/datasets/create_string_data.py)."
+        ),
     )
     parser.add_argument("--start", type=int, default=0, help="Start index (default: 0).")
     parser.add_argument("--limit", type=int, default=None, help="Max examples to render (default: all).")
@@ -278,7 +390,7 @@ def main() -> int:
     out_path: Path = args.out or parquet_path.with_suffix(".html")
     funcs_path: Path = args.funcs
     if not funcs_path.exists():
-        raise SystemExit(f"funcs.py not found: {funcs_path}")
+        raise SystemExit(f"Funcs file not found: {funcs_path}")
 
     funcs_source = _load_funcs_source_map(funcs_path)
     dataset = _load_dataset(parquet_path)
@@ -288,6 +400,7 @@ def main() -> int:
     groups = _build_groups(
         dataset=dataset,
         funcs_source=funcs_source,
+        funcs_label=str(funcs_path),
         start=max(0, args.start),
         limit=limit,
         max_responses=args.max_responses,

@@ -2,6 +2,7 @@ import re
 import json
 import math
 import random
+from functools import lru_cache
 
 solution_prefix = """from itertools import accumulate, chain, combinations, count, permutations, product, groupby, islice, repeat
 from copy import deepcopy
@@ -373,6 +374,60 @@ def compute_score_backward(solution, ground_truth):
         return 0, 0
 
 
+_CODEIO_FUNC_ENV: dict[str, object] | None = None
+try:  # best-effort: only needed for `codeio-preimage-*`
+    from projects.datasets import create_string_data as _create_string_data  # type: ignore
+
+    _CODEIO_FUNC_ENV = {
+        name: getattr(_create_string_data, name)
+        for name in dir(_create_string_data)
+        if re.fullmatch(r"func_\d{2}", name) is not None
+    }
+except Exception:
+    _CODEIO_FUNC_ENV = None
+
+
+@lru_cache(maxsize=256)
+def _build_codeio_ref_fn(ref_code: str, funcname: str) -> object:
+    env: dict[str, object] = {"__builtins__": __builtins__}
+    if _CODEIO_FUNC_ENV is not None:
+        env.update(_CODEIO_FUNC_ENV)
+    exec(ref_code, env, env)
+    return env[funcname]
+
+
+def compute_score_preimage(solution, ground_truth):
+    if _CODEIO_FUNC_ENV is None:
+        print("[Error] codeio-preimage requires `projects.datasets.create_string_data` to be importable.")
+        return -1, 0
+
+    ref_output = ground_truth["ref_output"]
+    ref_code = ground_truth["ref_code"]
+    funcname = ground_truth.get("funcname", "main_solution")
+
+    try:
+        ref_fn = _build_codeio_ref_fn(ref_code, funcname)
+        if not callable(ref_fn):
+            print("[Error] Reference function is not callable.")
+            return -1, 0
+        execed_output = ref_fn(str(solution))
+    except Exception as e:
+        print(f"[Error] Failed to execute reference code: {e}")
+        return -1, 0
+
+    acc = is_close(execed_output, ref_output)
+    if acc:
+        print("[Match] Correct!")
+        print("[Final Score]: 1")
+        return 1, 1
+    else:
+        print(
+            f"[Mismatch] Given the output {json.dumps(ref_output)}, your predicted input is {json.dumps(solution)}, which gets {json.dumps(execed_output)}."
+        )
+        print("[Final Score]: 0")
+        return 0, 0
+
+
 def compute_score_forward(solution, ground_truth):
     ref_output = ground_truth['ref_output']
     acc = is_close(solution, ref_output)
@@ -389,7 +444,10 @@ def compute_score_forward(solution, ground_truth):
 
 
 def compute_score(solution_str, ground_truth, task="codeio-backward"):
-    task = task[7:]
+    if task.startswith("codeio-nb-"):
+        task = task[len("codeio-nb-") :]
+    elif task.startswith("codeio-"):
+        task = task[len("codeio-") :]
     ground_truth = json.loads(ground_truth)
 
     global do_print
@@ -429,6 +487,12 @@ def compute_score(solution_str, ground_truth, task="codeio-backward"):
                 return -1, 0
             input_param = extracted['output']
             return compute_score_backward(input_param, ground_truth)
+        elif task.startswith('preimage'):
+            if "output" not in extracted:
+                print("No field 'input' in the extracted JSON!")
+                return -1, 0
+            input_param = extracted["output"]
+            return compute_score_preimage(input_param, ground_truth)
         elif task.startswith('forward'):
             if "output" not in extracted:
                 print("No field 'output' in the extracted JSON!")
