@@ -381,8 +381,32 @@ try:  # best-effort: only needed for `codeio-preimage-*`
     _CODEIO_FUNC_ENV = {
         name: getattr(_create_string_data, name)
         for name in dir(_create_string_data)
-        if re.fullmatch(r"func_\d{2}", name) is not None
+        if re.fullmatch(r"(func_\d{2}|nb_\d{2})", name) is not None
     }
+
+    # NB-v2 datasets still render functions as `func_{xx}` in prompts/reference code
+    # via `projects/datasets/create_string_data.py`'s `func_name_mapping`:
+    #   nb_00..nb_24  ->  func_24..func_48
+    #
+    # At stage-2 runtime (where only `main_solution` is emitted), we must provide
+    # those `func_XX` names in the exec env, pointing at the NB-v2 implementations.
+    _num_bijective = int(getattr(_create_string_data, "NUM_BIJECTIVE_FUNCS", 24))
+    _num_nb_v2 = int(getattr(_create_string_data, "NUM_NB_V2_FUNCS", 25))
+    for _i in range(_num_nb_v2):
+        _nb_name = f"nb_{_i:02d}"
+        _func_name = f"func_{(_num_bijective + _i):02d}"
+        if hasattr(_create_string_data, _nb_name):
+            # Override any existing v1 `func_XX` with the canonical NB-v2 meaning.
+            _CODEIO_FUNC_ENV[_func_name] = getattr(_create_string_data, _nb_name)
+    # Also include nb_v2 helper functions needed at stage-2 runtime
+    for _helper_name in [
+        "_digits", "_undigits",
+        "scr_reverse", "scr_rotate1", "scr_swappairs", "scr_oddeven", "scr_multperm3",
+        "mix_A_neighbor_sum_affine", "mix_B_triple_weight_affine",
+        "mix_C_runsum_affine", "mix_D_nonlinear_mod5_embed",
+    ]:
+        if hasattr(_create_string_data, _helper_name):
+            _CODEIO_FUNC_ENV[_helper_name] = getattr(_create_string_data, _helper_name)
 except Exception:
     _CODEIO_FUNC_ENV = None
 

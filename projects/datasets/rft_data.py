@@ -53,8 +53,6 @@ raw_dataset = load_dataset("parquet", data_files=args.data_path)['train']
 new_dataset = []
 func_statistics = defaultdict(lambda: 0)
 
-import pdb; pdb.set_trace()
-
 for gen_path in all_gen_path:
     dataset = load_dataset("parquet", data_files=gen_path)['train']
 

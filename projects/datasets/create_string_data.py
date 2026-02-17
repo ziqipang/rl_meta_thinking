@@ -5,6 +5,7 @@ Digit-String Operations for RL Research
 This file defines:
 - `func_00`..`func_23`: bijective digit-string transforms (unique inverse).
 - `func_24+`: non-bijective digit-string transforms (many-to-one).
+- `nb_00+` (aka nonbijective_v2): a second non-bijective family used via `--function_kind nonbijective_v2`.
 
 All functions take a single digit string and return a string.
 """
@@ -598,21 +599,521 @@ def func_43(s):
 
 
 # ==================================================
+# NON-BIJECTIVE V2: Local neighbor/triple/state transforms
+# (Designed to be forward-simple but non-trivially invertible)
+# ==================================================
+
+def _d(ch: str) -> int:
+    return ord(ch) - ord("0")
+
+
+def _c(v: int) -> str:
+    return chr(v + ord("0"))
+
+
+def _fold0to4(t: int) -> int:
+    # fold a digit 0..9 down to 0..4 by symmetry around 4.5
+    return t if t <= 4 else 9 - t
+
+
+# ==================================================
+# TIER 1: CYCLIC NEIGHBOR (2-local, overlapping constraints)
+# ==================================================
+
+def nb_00(s: str) -> str:
+    """Cyclic floor-average of neighbors.
+    y[i] = floor((x[i] + x[i+1]) / 2) with wrap-around.
+    Non-bijective; x=y almost never works because constraints overlap."""
+    n = len(s)
+    if n <= 1:
+        return s
+    out: list[str] = []
+    for i in range(n):
+        a = _d(s[i])
+        b = _d(s[(i + 1) % n])
+        out.append(_c((a + b) // 2))
+    return "".join(out)
+
+
+def nb_01(s: str) -> str:
+    """Cyclic ceil-average of neighbors.
+    y[i] = ceil((x[i] + x[i+1]) / 2) = (a+b+1)//2."""
+    n = len(s)
+    if n <= 1:
+        return s
+    out: list[str] = []
+    for i in range(n):
+        a = _d(s[i])
+        b = _d(s[(i + 1) % n])
+        out.append(_c((a + b + 1) // 2))
+    return "".join(out)
+
+
+def nb_02(s: str) -> str:
+    """Cyclic absolute difference.
+    y[i] = |x[i] - x[i+1]| (wrap-around).
+    Inversion becomes branching (±) globally, not per-position independent."""
+    n = len(s)
+    if n <= 1:
+        return ("0" * n) if n == 1 else s
+    out: list[str] = []
+    for i in range(n):
+        a = _d(s[i])
+        b = _d(s[(i + 1) % n])
+        out.append(_c(abs(a - b)))
+    return "".join(out)
+
+
+def nb_03(s: str) -> str:
+    """Cyclic capped sum.
+    y[i] = min(x[i] + x[i+1], 9).
+    Loses carry magnitude; overlapping caps block trivial inverses."""
+    n = len(s)
+    if n <= 1:
+        return s
+    out: list[str] = []
+    for i in range(n):
+        a = _d(s[i])
+        b = _d(s[(i + 1) % n])
+        out.append(_c(min(a + b, 9)))
+    return "".join(out)
+
+
+def nb_04(s: str) -> str:
+    """Cyclic overflow amount past 9.
+    y[i] = max(x[i] + x[i+1] - 9, 0).
+    Output encodes 'how much overflow' but loses exact operands."""
+    n = len(s)
+    if n <= 1:
+        return ("0" * n) if n == 1 else s
+    out: list[str] = []
+    for i in range(n):
+        a = _d(s[i])
+        b = _d(s[(i + 1) % n])
+        out.append(_c(max(a + b - 9, 0)))
+    return "".join(out)
+
+
+def nb_05(s: str) -> str:
+    """Cyclic distance of neighbor-sum to 9.
+    y[i] = |(x[i] + x[i+1]) - 9|.
+    Nonlinear; lots of collisions; no projector behavior."""
+    n = len(s)
+    if n <= 1:
+        return s
+    out: list[str] = []
+    for i in range(n):
+        a = _d(s[i])
+        b = _d(s[(i + 1) % n])
+        out.append(_c(abs(a + b - 9)))
+    return "".join(out)
+
+
+def nb_06(s: str) -> str:
+    """Cyclic folded neighbor-sum mod 10 (folds 0..9 to 0..4).
+    t = (x[i] + x[i+1]) % 10
+    y[i] = fold(t) in 0..4
+    Many-to-one + overlapping constraints => no trivial right-inverse."""
+    n = len(s)
+    if n <= 1:
+        return s
+    out: list[str] = []
+    for i in range(n):
+        a = _d(s[i])
+        b = _d(s[(i + 1) % n])
+        t = (a + b) % 10
+        out.append(_c(_fold0to4(t)))
+    return "".join(out)
+
+
+def nb_07(s: str) -> str:
+    """Cyclic folded neighbor-difference mod 10.
+    t = (x[i] - x[i+1]) % 10
+    y[i] = fold(t) in 0..4
+    Inversion is not 'copy y' and not independent per digit."""
+    n = len(s)
+    if n <= 1:
+        return s
+    out: list[str] = []
+    for i in range(n):
+        a = _d(s[i])
+        b = _d(s[(i + 1) % n])
+        t = (a - b) % 10
+        out.append(_c(_fold0to4(t)))
+    return "".join(out)
+
+
+def nb_08(s: str) -> str:
+    """Cyclic (avg + absdiff) mod 10.
+    y[i] = ( floor((a+b)/2) + |a-b| ) % 10
+    Designed to break easy inverses; still forward-simple."""
+    n = len(s)
+    if n <= 1:
+        return s
+    out: list[str] = []
+    for i in range(n):
+        a = _d(s[i])
+        b = _d(s[(i + 1) % n])
+        val = ((a + b) // 2 + abs(a - b)) % 10
+        out.append(_c(val))
+    return "".join(out)
+
+
+def nb_09(s: str) -> str:
+    """Cyclic 'two-views' merge.
+    u = min(a+b, 9)
+    v = |a-b|
+    y[i] = min(u, v)
+    Nonlinear compression; avoids idempotent/projector patterns."""
+    n = len(s)
+    if n <= 1:
+        return s
+    out: list[str] = []
+    for i in range(n):
+        a = _d(s[i])
+        b = _d(s[(i + 1) % n])
+        u = min(a + b, 9)
+        v = abs(a - b)
+        out.append(_c(min(u, v)))
+    return "".join(out)
+
+
+# ==================================================
+# TIER 2: CYCLIC TRIPLES (3-local, more constraints)
+# ==================================================
+
+def nb_10(s: str) -> str:
+    """Cyclic triple average floor.
+    y[i] = floor((x[i] + x[i+1] + x[i+2]) / 3)."""
+    n = len(s)
+    if n <= 1:
+        return s
+    if n == 2:
+        out: list[str] = []
+        for i in range(n):
+            a = _d(s[i])
+            b = _d(s[(i + 1) % n])
+            out.append(_c((a + b) // 2))
+        return "".join(out)
+    out: list[str] = []
+    for i in range(n):
+        a = _d(s[i])
+        b = _d(s[(i + 1) % n])
+        c = _d(s[(i + 2) % n])
+        out.append(_c((a + b + c) // 3))
+    return "".join(out)
+
+
+def nb_11(s: str) -> str:
+    """Cyclic triple average ceil.
+    y[i] = ceil((a+b+c)/3) = (a+b+c+2)//3."""
+    n = len(s)
+    if n <= 1:
+        return s
+    if n == 2:
+        out: list[str] = []
+        for i in range(n):
+            a = _d(s[i])
+            b = _d(s[(i + 1) % n])
+            out.append(_c((a + b + 1) // 2))
+        return "".join(out)
+    out: list[str] = []
+    for i in range(n):
+        a = _d(s[i])
+        b = _d(s[(i + 1) % n])
+        c = _d(s[(i + 2) % n])
+        out.append(_c((a + b + c + 2) // 3))
+    return "".join(out)
+
+
+def nb_12(s: str) -> str:
+    """Cyclic triple range.
+    y[i] = max(a,b,c) - min(a,b,c)."""
+    n = len(s)
+    if n <= 1:
+        return ("0" * n) if n == 1 else s
+    if n == 2:
+        out: list[str] = []
+        for i in range(n):
+            a = _d(s[i])
+            b = _d(s[(i + 1) % n])
+            out.append(_c(abs(a - b)))
+        return "".join(out)
+    out: list[str] = []
+    for i in range(n):
+        a = _d(s[i])
+        b = _d(s[(i + 1) % n])
+        c = _d(s[(i + 2) % n])
+        out.append(_c(max(a, b, c) - min(a, b, c)))
+    return "".join(out)
+
+
+def nb_13(s: str) -> str:
+    """Cyclic folded triple sum mod 10.
+    t = (a+b+c) % 10; y = fold(t) in 0..4."""
+    n = len(s)
+    if n <= 1:
+        return s
+    if n == 2:
+        out: list[str] = []
+        for i in range(n):
+            a = _d(s[i])
+            b = _d(s[(i + 1) % n])
+            t = (a + b) % 10
+            out.append(_c(_fold0to4(t)))
+        return "".join(out)
+    out: list[str] = []
+    for i in range(n):
+        a = _d(s[i])
+        b = _d(s[(i + 1) % n])
+        c = _d(s[(i + 2) % n])
+        t = (a + b + c) % 10
+        out.append(_c(_fold0to4(t)))
+    return "".join(out)
+
+
+def nb_14(s: str) -> str:
+    """Cyclic second-difference magnitude mod 10.
+    y[i] = |a - 2b + c| % 10  (nonlinear; overlapping)."""
+    n = len(s)
+    if n <= 2:
+        return ("0" * n) if n > 0 else s
+    out: list[str] = []
+    for i in range(n):
+        a = _d(s[i])
+        b = _d(s[(i + 1) % n])
+        c = _d(s[(i + 2) % n])
+        val = abs(a - 2 * b + c) % 10
+        out.append(_c(val))
+    return "".join(out)
+
+
+def nb_15(s: str) -> str:
+    """Cyclic clamped 'abs(a+b-c)'.
+    y[i] = min(|a + b - c|, 9).
+    Many-to-one; avoids projector/fixed-point issues."""
+    n = len(s)
+    if n <= 1:
+        return s
+    if n == 2:
+        out: list[str] = []
+        for i in range(n):
+            a = _d(s[i])
+            b = _d(s[(i + 1) % n])
+            out.append(_c(abs(a + b - 9)))
+        return "".join(out)
+    out: list[str] = []
+    for i in range(n):
+        a = _d(s[i])
+        b = _d(s[(i + 1) % n])
+        c = _d(s[(i + 2) % n])
+        out.append(_c(min(abs(a + b - c), 9)))
+    return "".join(out)
+
+
+# ==================================================
+# TIER 3: LOSSY STATE (single rule; no template composition)
+# ==================================================
+
+def nb_16(s: str) -> str:
+    """Prefix-sum -> evenized emission.
+    state = (state + digit) % 10
+    y[i] = (2*state) % 10  (loses the +/-5 ambiguity each step)."""
+    n = len(s)
+    if n == 0:
+        return s
+    out: list[str] = []
+    st = 0
+    for ch in s:
+        st = (st + _d(ch)) % 10
+        out.append(_c((2 * st) % 10))
+    return "".join(out)
+
+
+def nb_17(s: str) -> str:
+    """Prefix-sum -> folded emission (0..4).
+    y[i] = min(state, 9-state)."""
+    n = len(s)
+    if n == 0:
+        return s
+    out: list[str] = []
+    st = 0
+    for ch in s:
+        st = (st + _d(ch)) % 10
+        out.append(_c(min(st, 9 - st)))
+    return "".join(out)
+
+
+def nb_18(s: str) -> str:
+    """Prefix-sum -> square emission.
+    y[i] = (state^2) % 10 (many-to-one because squaring mod 10 is not injective)."""
+    n = len(s)
+    if n == 0:
+        return s
+    out: list[str] = []
+    st = 0
+    for ch in s:
+        st = (st + _d(ch)) % 10
+        out.append(_c((st * st) % 10))
+    return "".join(out)
+
+
+def nb_19(s: str) -> str:
+    """Affine state update + folded emission.
+    state = (2*state + digit) % 10
+    y[i] = min(state, 9-state)
+    Strong set-valued behavior; still a single coherent operation."""
+    n = len(s)
+    if n == 0:
+        return s
+    out: list[str] = []
+    st = 0
+    for ch in s:
+        st = (2 * st + _d(ch)) % 10
+        out.append(_c(min(st, 9 - st)))
+    return "".join(out)
+
+
+def nb_20(s: str) -> str:
+    """Cyclic median-of-3.
+    y[i] = median(x[i], x[i+1], x[i+2]) with wrap-around.
+    Non-bijective + overlapping constraints => x=y almost never works (except special cases)."""
+    n = len(s)
+    if n <= 1:
+        return s
+    if n == 2:
+        a = _d(s[0])
+        b = _d(s[1])
+        m = (a + b) // 2
+        return _c(m) + _c(m)
+
+    out: list[str] = []
+    for i in range(n):
+        a = _d(s[i])
+        b = _d(s[(i + 1) % n])
+        c = _d(s[(i + 2) % n])
+        lo = min(a, b, c)
+        hi = max(a, b, c)
+        med = a + b + c - lo - hi
+        out.append(_c(med))
+    return "".join(out)
+
+
+def nb_21(s: str) -> str:
+    """Cyclic rank-of-first-in-triple (0/1/2).
+    y[i] = 0 if x[i] is (strict) min of {x[i],x[i+1],x[i+2]}
+           2 if x[i] is (strict) max
+           1 otherwise (including ties/all-equal).
+    Very non-bijective; kills x=y hacks because outputs are only in {0,1,2}."""
+    n = len(s)
+    if n == 0:
+        return s
+    if n == 1:
+        return "1"  # tie by definition
+    if n == 2:
+        a = _d(s[0])
+        b = _d(s[1])
+        if a < b:
+            r0, r1 = 0, 2
+        elif a > b:
+            r0, r1 = 2, 0
+        else:
+            r0, r1 = 1, 1
+        return _c(r0) + _c(r1)
+
+    out: list[str] = []
+    for i in range(n):
+        a = _d(s[i])
+        b = _d(s[(i + 1) % n])
+        c = _d(s[(i + 2) % n])
+
+        is_min = (a <= b and a <= c) and (a < b or a < c)
+        is_max = (a >= b and a >= c) and (a > b or a > c)
+
+        out.append("0" if is_min else ("2" if is_max else "1"))
+    return "".join(out)
+
+
+def nb_22(s: str) -> str:
+    """Cyclic capped neighbor product.
+    y[i] = min(x[i] * x[i+1], 9) with wrap-around.
+    Strongly non-bijective; overlapping constraints; not a projector."""
+    n = len(s)
+    if n == 0:
+        return s
+    if n == 1:
+        a = _d(s[0])
+        return _c(min(a * a, 9))
+
+    out: list[str] = []
+    for i in range(n):
+        a = _d(s[i])
+        b = _d(s[(i + 1) % n])
+        out.append(_c(min(a * b, 9)))
+    return "".join(out)
+
+
+def nb_23(s: str) -> str:
+    """Cyclic local total variation (3-local).
+    y[i] = min(|x[i]-x[i+1]| + |x[i+1]-x[i+2]|, 9) with wrap-around.
+    Non-bijective; inversion requires globally consistent assignments."""
+    n = len(s)
+    if n == 0:
+        return s
+    if n == 1:
+        return "0"
+    if n == 2:
+        a = _d(s[0])
+        b = _d(s[1])
+        v = min(2 * abs(a - b), 9)
+        return _c(v) + _c(v)
+
+    out: list[str] = []
+    for i in range(n):
+        a = _d(s[i])
+        b = _d(s[(i + 1) % n])
+        c = _d(s[(i + 2) % n])
+        out.append(_c(min(abs(a - b) + abs(b - c), 9)))
+    return "".join(out)
+
+
+def nb_24(s: str) -> str:
+    """Lossy state machine with quantized emission.
+    state = (3*state + digit) % 10
+    y[i]  = state // 2     (digits 0..4)
+    Non-bijective due to quantization; avoids x=y because output alphabet shrinks and depends on history."""
+    n = len(s)
+    if n == 0:
+        return s
+    out: list[str] = []
+    st = 0
+    for ch in s:
+        st = (3 * st + _d(ch)) % 10
+        out.append(_c(st // 2))
+    return "".join(out)
+
+
+# ==================================================
 # Function Name Mapping (identity by default)
 # ==================================================
 
 NUM_BIJECTIVE_FUNCS = 24  # func_00..func_23
 NUM_NONBIJECTIVE_FUNCS = 20  # func_24..func_43
+NUM_NB_V2_FUNCS = 25  # nb_00..nb_24
 NUM_TOTAL_FUNCS = NUM_BIJECTIVE_FUNCS + NUM_NONBIJECTIVE_FUNCS
 
 func_name_mapping = {f"func_{i:02d}": f"func_{i:02d}" for i in range(NUM_TOTAL_FUNCS)}
+func_name_mapping.update({f"nb_{i:02d}": f"func_{(NUM_BIJECTIVE_FUNCS + i):02d}" for i in range(NUM_NB_V2_FUNCS)})
 
 BIJECTIVE_FUNCTION_NAMES = [f"func_{i:02d}" for i in range(NUM_BIJECTIVE_FUNCS)]
 NONBIJECTIVE_FUNCTION_NAMES = [f"func_{i:02d}" for i in range(NUM_BIJECTIVE_FUNCS, NUM_TOTAL_FUNCS)]
+NB_V2_FUNCTION_NAMES = [f"nb_{i:02d}" for i in range(NUM_NB_V2_FUNCS)]
 
 # Default function splits (can be overridden via CLI flags).
 DEFAULT_TRAIN_FUNCTION_NAMES = [f"func_{i:02d}" for i in range(0, 18)] + [f"func_{i:02d}" for i in range(24, 38)]
 DEFAULT_TEST_FUNCTION_NAMES = [f"func_{i:02d}" for i in range(18, 24)] + [f"func_{i:02d}" for i in range(38, 44)]
+DEFAULT_NB_V2_TRAIN_FUNCTION_NAMES = [f"nb_{i:02d}" for i in range(0, 18)]
+DEFAULT_NB_V2_TEST_FUNCTION_NAMES = [f"nb_{i:02d}" for i in range(18, 25)]
 
 def _build_function_sets(
     *,
@@ -632,20 +1133,26 @@ def _build_function_sets(
       - nonbijective test: `func_34`..`func_43` (Families B..E)
     """
     kind = function_kind.lower().strip()
-    if kind not in {"bijective", "nonbijective", "both"}:
+    if kind not in {"bijective", "nonbijective", "nonbijective_v2", "both"}:
         raise ValueError(f"Unknown function_kind: {function_kind!r}")
 
     if kind == "bijective":
         allowed_names = set(BIJECTIVE_FUNCTION_NAMES)
     elif kind == "nonbijective":
         allowed_names = set(NONBIJECTIVE_FUNCTION_NAMES)
+    elif kind == "nonbijective_v2":
+        allowed_names = set(NB_V2_FUNCTION_NAMES)
     else:
         allowed_names = set(BIJECTIVE_FUNCTION_NAMES) | set(NONBIJECTIVE_FUNCTION_NAMES)
 
     all_set: dict[str, Callable[[str], str]] = {name: globals()[name] for name in sorted(allowed_names)}
 
-    train_selected = [n for n in DEFAULT_TRAIN_FUNCTION_NAMES if n in allowed_names]
-    test_selected = [n for n in DEFAULT_TEST_FUNCTION_NAMES if n in allowed_names]
+    if kind == "nonbijective_v2":
+        train_selected = [n for n in DEFAULT_NB_V2_TRAIN_FUNCTION_NAMES if n in allowed_names]
+        test_selected = [n for n in DEFAULT_NB_V2_TEST_FUNCTION_NAMES if n in allowed_names]
+    else:
+        train_selected = [n for n in DEFAULT_TRAIN_FUNCTION_NAMES if n in allowed_names]
+        test_selected = [n for n in DEFAULT_TEST_FUNCTION_NAMES if n in allowed_names]
 
     train_set = {name: all_set[name] for name in train_selected}
     eval_set = {name: all_set[name] for name in test_selected}
@@ -683,6 +1190,9 @@ def generate_full_code(expr: str, *, stage: int, custom_functions: dict[str, Cal
         code_parts.append("from math import gcd")
         if any(fname in used_funcs for fname in (f"func_{i:02d}" for i in range(24, 34))):
             code_parts.append(inspect.getsource(_digitwise_map))
+        if any(fname in used_funcs for fname in NB_V2_FUNCTION_NAMES):
+            for _helper_fn in [_d, _c, _fold0to4]:
+                code_parts.append(inspect.getsource(_helper_fn))
         for fname in sorted(used_funcs):
             code_parts.append(inspect.getsource(custom_functions[fname]))
 
@@ -700,8 +1210,8 @@ def generate_feasible_input(
     func: Callable[[str], object],
     *,
     attempts: int = 100,
-    min_len: int = 4,
-    max_len: int = 10,
+    min_len: int = 2,
+    max_len: int = 6,
 ) -> str | None:
     """Find a random digit-string input that makes `func(input)` return a string."""
     for _ in range(attempts):
@@ -756,7 +1266,7 @@ if __name__ == "__main__":
         "--function_kind",
         type=str,
         default="bijective",
-        choices=["bijective", "nonbijective", "both"],
+        choices=["bijective", "nonbijective", "nonbijective_v2", "both"],
         help="Which function family to sample from.",
     )
     parser.add_argument(
@@ -780,7 +1290,7 @@ if __name__ == "__main__":
     else:
         custom_functions = train_set if args.split == "train" else eval_set
 
-    uses_nonbijective = any(name in NONBIJECTIVE_FUNCTION_NAMES for name in custom_functions.keys())
+    uses_nonbijective = any(name in NONBIJECTIVE_FUNCTION_NAMES or name in NB_V2_FUNCTION_NAMES for name in custom_functions.keys())
     data_source_prefix = "codeio-nb" if uses_nonbijective else "codeio"
 
     if args.direction == "backward":

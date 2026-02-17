@@ -20,7 +20,7 @@ n=16
 enable_filter_groups=True
 filter_groups_metric=seq_reward
 max_num_gen_batches=10
-gen_prompt_bsz=$((bsz * 4))
+gen_prompt_bsz=$((bsz * 8))
 
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \
@@ -74,7 +74,7 @@ python3 -m verl.trainer.main_ppo \
     trainer.experiment_name=${experiment_name} \
     trainer.n_gpus_per_node=8 \
     trainer.nnodes=1 \
-    trainer.save_freq=20 \
+    trainer.save_freq=50 \
     trainer.test_freq=20 \
     trainer.default_local_dir=${save_dir} \
     trainer.total_epochs=1 $@
