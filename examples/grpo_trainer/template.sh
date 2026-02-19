@@ -19,8 +19,8 @@ n=16
 
 enable_filter_groups=True
 filter_groups_metric=seq_reward
-max_num_gen_batches=10
-gen_prompt_bsz=$((bsz * 8))
+max_num_gen_batches=0
+gen_prompt_bsz=$((bsz * 2))
 
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \

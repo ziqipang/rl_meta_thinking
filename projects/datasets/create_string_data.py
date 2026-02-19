@@ -1112,12 +1112,59 @@ NB_V2_FUNCTION_NAMES = [f"nb_{i:02d}" for i in range(NUM_NB_V2_FUNCS)]
 # Default function splits (can be overridden via CLI flags).
 DEFAULT_TRAIN_FUNCTION_NAMES = [f"func_{i:02d}" for i in range(0, 18)] + [f"func_{i:02d}" for i in range(24, 38)]
 DEFAULT_TEST_FUNCTION_NAMES = [f"func_{i:02d}" for i in range(18, 24)] + [f"func_{i:02d}" for i in range(38, 44)]
-DEFAULT_NB_V2_TRAIN_FUNCTION_NAMES = [f"nb_{i:02d}" for i in range(0, 18)]
-DEFAULT_NB_V2_TEST_FUNCTION_NAMES = [f"nb_{i:02d}" for i in range(18, 25)]
+
+# --- nonbijective_v2 split options (selected via CLI) ---
+# Original split (historical): train nb_00..nb_17, test nb_18..nb_24.
+ORIGINAL_NB_V2_TRAIN_FUNCTION_NAMES = [f"nb_{i:02d}" for i in range(0, 18)]
+ORIGINAL_NB_V2_TEST_FUNCTION_NAMES = [f"nb_{i:02d}" for i in range(18, 25)]
+
+# Easier-than-original split: make eval more lossy (more preimages per output on average),
+# useful as a sanity-check baseline where pass@1 should be noticeably higher.
+EASIER_NB_V2_TEST_FUNCTION_NAMES = [
+    # Extremely lossy
+    "nb_21",  # rank in triple -> outputs only {0,1,2} (and wrap-around constraints)
+    "nb_20",  # cyclic median-of-3
+    # Lossy folded neighbor ops
+    "nb_06",  # folded (a+b)%10 -> 0..4
+    "nb_07",  # folded (a-b)%10 -> 0..4
+    # Other lossy/compressive ops
+    "nb_23",  # local total variation clamped
+    "nb_13",  # folded triple sum -> 0..4
+    "nb_16",  # prefix-sum evenized emission
+]
+EASIER_NB_V2_TRAIN_FUNCTION_NAMES = [
+    n for n in NB_V2_FUNCTION_NAMES if n not in set(EASIER_NB_V2_TEST_FUNCTION_NAMES)
+]
+
+# Balanced split: mix tiers in both train and eval.
+# Tiers:
+# - Tier 1: nb_00..nb_09
+# - Tier 2: nb_10..nb_15
+# - Tier 3: nb_16..nb_24
+BALANCED_NB_V2_TEST_FUNCTION_NAMES = [
+    # Tier 1
+    "nb_02",
+    "nb_06",
+    "nb_09",
+    # Tier 2
+    "nb_12",
+    "nb_14",
+    # Tier 3
+    "nb_18",
+    "nb_24",
+]
+BALANCED_NB_V2_TRAIN_FUNCTION_NAMES = [
+    n for n in NB_V2_FUNCTION_NAMES if n not in set(BALANCED_NB_V2_TEST_FUNCTION_NAMES)
+]
+
+# Back-compat defaults (used unless overridden by --nb_v2_split).
+DEFAULT_NB_V2_TRAIN_FUNCTION_NAMES = BALANCED_NB_V2_TRAIN_FUNCTION_NAMES
+DEFAULT_NB_V2_TEST_FUNCTION_NAMES = BALANCED_NB_V2_TEST_FUNCTION_NAMES
 
 def _build_function_sets(
     *,
     function_kind: str,
+    nb_v2_split: str = "balanced",
 ) -> tuple[dict[str, Callable[[str], str]], dict[str, Callable[[str], str]], dict[str, Callable[[str], str]]]:
     """Build `{name -> callable}` maps for all/train/eval function pools.
 
@@ -1148,8 +1195,23 @@ def _build_function_sets(
     all_set: dict[str, Callable[[str], str]] = {name: globals()[name] for name in sorted(allowed_names)}
 
     if kind == "nonbijective_v2":
-        train_selected = [n for n in DEFAULT_NB_V2_TRAIN_FUNCTION_NAMES if n in allowed_names]
-        test_selected = [n for n in DEFAULT_NB_V2_TEST_FUNCTION_NAMES if n in allowed_names]
+        split = nb_v2_split.lower().strip()
+        if split == "original":
+            train_names = ORIGINAL_NB_V2_TRAIN_FUNCTION_NAMES
+            test_names = ORIGINAL_NB_V2_TEST_FUNCTION_NAMES
+        elif split == "easier":
+            train_names = EASIER_NB_V2_TRAIN_FUNCTION_NAMES
+            test_names = EASIER_NB_V2_TEST_FUNCTION_NAMES
+        elif split == "balanced":
+            train_names = DEFAULT_NB_V2_TRAIN_FUNCTION_NAMES
+            test_names = DEFAULT_NB_V2_TEST_FUNCTION_NAMES
+        else:
+            raise ValueError(
+                f"Unknown nb_v2_split: {nb_v2_split!r} (expected 'balanced', 'original', or 'easier')"
+            )
+
+        train_selected = [n for n in train_names if n in allowed_names]
+        test_selected = [n for n in test_names if n in allowed_names]
     else:
         train_selected = [n for n in DEFAULT_TRAIN_FUNCTION_NAMES if n in allowed_names]
         test_selected = [n for n in DEFAULT_TEST_FUNCTION_NAMES if n in allowed_names]
@@ -1270,6 +1332,13 @@ if __name__ == "__main__":
         help="Which function family to sample from.",
     )
     parser.add_argument(
+        "--nb_v2_split",
+        type=str,
+        default="balanced",
+        choices=["balanced", "original", "easier"],
+        help="Only used when --function_kind nonbijective_v2: choose which train/test function split to use.",
+    )
+    parser.add_argument(
         "--stage1_pool",
         type=str,
         default="all",
@@ -1283,6 +1352,7 @@ if __name__ == "__main__":
 
     all_set, train_set, eval_set = _build_function_sets(
         function_kind=args.function_kind,
+        nb_v2_split=args.nb_v2_split,
     )
 
     if args.stage == 1 and args.stage1_pool == "all":

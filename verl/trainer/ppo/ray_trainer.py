@@ -324,8 +324,16 @@ class RayPPOTrainer(object):
 
         filter_cfg = config.algorithm.filter_groups
         if filter_cfg.enable:
-            assert filter_cfg.max_num_gen_batches > 0, f"{filter_cfg.max_num_gen_batches=}"
             assert filter_cfg.metric is not None, f"{filter_cfg.metric=}"
+            # NOTE: Non-positive values mean "no upper limit" (see ppo_trainer.yaml).
+            # This can loop forever if filtering keeps discarding everything, so users should
+            # keep it positive unless they are sure their setup will eventually yield variance.
+            assert filter_cfg.max_num_gen_batches is not None, f"{filter_cfg.max_num_gen_batches=}"
+            if config.actor_rollout_ref.rollout.n <= 1:
+                raise ValueError(
+                    "algorithm.filter_groups.enable=True requires actor_rollout_ref.rollout.n > 1, "
+                    f"but got {config.actor_rollout_ref.rollout.n=} (std across a single rollout is always 0)."
+                )
         else:
             assert config.data.train_batch_size == config.data.gen_batch_size, \
                 f"train_batch_size must be equal to gen_batch_size when filter_groups.enable is False, but got {config.data.train_batch_size =} and {config.data.gen_batch_size =}"
@@ -903,6 +911,16 @@ class RayPPOTrainer(object):
 
                         new_batch.batch['token_level_scores'] = reward_tensor
                         new_batch.batch['acc'] = acc_tensor
+                        # Log average *pre-filter* outcome scores for debugging. When
+                        # `algorithm.filter_groups.enable=True`, downstream filtering
+                        # can substantially bias the observed training reward upward.
+                        with torch.no_grad():
+                            seq_score = reward_tensor.sum(dim=-1)
+                            metrics["train/prefilter/seq_score/mean"] = torch.mean(seq_score).detach().item()
+                            metrics["train/prefilter/seq_score/rate_1"] = torch.mean(
+                                torch.eq(seq_score, 1).float()
+                            ).detach().item()
+                            metrics["train/prefilter/acc/mean"] = torch.mean(acc_tensor.float()).detach().item()
 
                         # compute rewards. apply_kl_penalty if available
                         if not self.config.actor_rollout_ref.actor.get('use_kl_loss', False):
@@ -913,7 +931,6 @@ class RayPPOTrainer(object):
                                 kl_metrics)  # TODO: This will be cleared if we use multiple genenration batches
                         else:
                             new_batch.batch['token_level_rewards'] = new_batch.batch['token_level_scores']
-
 
                     if not self.config.algorithm.filter_groups.enable:
                         batch = new_batch
@@ -961,7 +978,14 @@ class RayPPOTrainer(object):
                                     continue
                                 else:
                                     raise ValueError(
-                                        f'{num_gen_batches=} >= {max_num_gen_batches=}. Generated too many. Please check your data.'
+                                        "filter_groups could not collect enough prompts with non-zero reward variance: "
+                                        f"{num_prompt_in_batch=} < {prompt_bsz=} after {num_gen_batches=} generation batches "
+                                        f"({max_num_gen_batches=}, metric={metric_name}). "
+                                        "This usually means per-prompt rewards are identical across rollouts (std==0), "
+                                        "e.g. sparse/binary rewards early on or deterministic decoding. "
+                                        "Try increasing actor_rollout_ref.rollout.n, enabling sampling (temperature/top_p), "
+                                        "increasing data.gen_batch_size or algorithm.filter_groups.max_num_gen_batches, "
+                                        "or set algorithm.filter_groups.max_num_gen_batches<=0 for no upper limit."
                                     )
                             else:
                                 # Align the batch
@@ -1059,5 +1083,3 @@ class RayPPOTrainer(object):
                     return
 
                 self.global_steps += 1
-
-

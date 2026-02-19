@@ -15,4 +15,5 @@ export RAY_DEBUG=legacy
 # causing `num_gen_batches >= max_num_gen_batches` errors. Disable it for this run.
 # When filter_groups is disabled, verl requires `data.gen_batch_size == data.train_batch_size`.
 # The GRPO template defaults gen_batch_size to `4 * train_batch_size`, so override it here.
-bash examples/grpo_trainer/template.sh algorithm.filter_groups.enable=False data.gen_batch_size=16
+# bash examples/grpo_trainer/template.sh algorithm.filter_groups.enable=False data.gen_batch_size=16
+bash examples/grpo_trainer/template.sh
