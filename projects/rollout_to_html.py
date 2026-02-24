@@ -23,8 +23,33 @@ try:  # best-effort: only needed for inverse/preimage evaluation
     _CODEIO_FUNC_ENV = {
         name: getattr(_create_string_data, name)
         for name in dir(_create_string_data)
-        if re.fullmatch(r"func_\d{2}", name) is not None
+        if re.fullmatch(r"(func_\d{2}|nb_\d{2})", name) is not None
     }
+
+    # NB-v2 datasets render functions as `func_{xx}` in prompts/reference code. At runtime
+    # we must provide those `func_XX` names pointing at the NB-v2 `nb_XX` implementations.
+    _num_bijective = int(getattr(_create_string_data, "NUM_BIJECTIVE_FUNCS", 24))
+    _num_nb_v2 = int(getattr(_create_string_data, "NUM_NB_V2_FUNCS", 25))
+    for _i in range(_num_nb_v2):
+        _nb_name = f"nb_{_i:02d}"
+        _func_name = f"func_{(_num_bijective + _i):02d}"
+        if hasattr(_create_string_data, _nb_name):
+            _CODEIO_FUNC_ENV[_func_name] = getattr(_create_string_data, _nb_name)
+    for _helper_name in [
+        "_digits",
+        "_undigits",
+        "scr_reverse",
+        "scr_rotate1",
+        "scr_swappairs",
+        "scr_oddeven",
+        "scr_multperm3",
+        "mix_A_neighbor_sum_affine",
+        "mix_B_triple_weight_affine",
+        "mix_C_runsum_affine",
+        "mix_D_nonlinear_mod5_embed",
+    ]:
+        if hasattr(_create_string_data, _helper_name):
+            _CODEIO_FUNC_ENV[_helper_name] = getattr(_create_string_data, _helper_name)
 except Exception:
     _CODEIO_FUNC_ENV = None
 
@@ -39,6 +64,15 @@ class RowGroup:
     func_code: str
     responses: list[str]
     inverse_exec_info: list[str] | None
+
+
+@dataclass(frozen=True)
+class RolloutSummary:
+    acc_mean: float | None
+    avg_score: float | None
+    scored_response_rows: int
+    error_count: int
+    note: str | None = None
 
 
 def _extract_prompt_content(prompt: Any) -> str:
@@ -71,12 +105,24 @@ def _load_funcs_source_map(funcs_path: Path) -> dict[str, str]:
     lines = src.splitlines(keepends=True)
     out: dict[str, str] = {}
     for node in tree.body:
-        if isinstance(node, ast.FunctionDef) and node.name.startswith("func_"):
+        if isinstance(node, ast.FunctionDef) and (node.name.startswith("func_") or node.name.startswith("nb_")):
             if getattr(node, "lineno", None) is None or getattr(node, "end_lineno", None) is None:
                 continue
             start = node.lineno - 1
             end = node.end_lineno
             out[node.name] = "".join(lines[start:end]).rstrip()
+
+    try:
+        num_bijective = int(getattr(_create_string_data, "NUM_BIJECTIVE_FUNCS", 24))
+        num_nb_v2 = int(getattr(_create_string_data, "NUM_NB_V2_FUNCS", 25))
+        for i in range(num_nb_v2):
+            nb_name = f"nb_{i:02d}"
+            func_name = f"func_{(num_bijective + i):02d}"
+            nb_src = out.get(nb_name)
+            if nb_src:
+                out[func_name] = f"# NOTE: {func_name} is an NB-v2 alias for {nb_name}\n\n{nb_src}"
+    except Exception:
+        pass
     return out
 
 
@@ -117,6 +163,71 @@ def _format_reward_info(reward_model: Any) -> str:
 
     return f"ground_truth: {ground_truth}"
 
+
+def _json_dumps_best_effort(obj: Any) -> str:
+    try:
+        return json.dumps(obj, ensure_ascii=False, sort_keys=True)
+    except Exception:
+        return json.dumps(str(obj), ensure_ascii=False)
+
+
+def _coerce_score_acc(result: Any) -> tuple[float | None, float | None]:
+    if result is None:
+        return None, None
+
+    if isinstance(result, (int, float, bool)):
+        v = float(result)
+        return v, v
+
+    if isinstance(result, (list, tuple)):
+        if not result:
+            return None, None
+        if len(result) == 1:
+            try:
+                v = float(result[0])
+            except Exception:
+                return None, None
+            return v, v
+        try:
+            return float(result[0]), float(result[1])
+        except Exception:
+            return None, None
+
+    if isinstance(result, dict):
+        score_raw: Any | None = None
+        for key in ("score", "reward", "rm_score", "sequence_score"):
+            if key in result:
+                score_raw = result.get(key)
+                break
+
+        acc_raw: Any | None = None
+        for key in ("acc", "accuracy"):
+            if key in result:
+                acc_raw = result.get(key)
+                break
+
+        score = None
+        acc = None
+        if score_raw is not None:
+            try:
+                score = float(score_raw)
+            except Exception:
+                score = None
+        if acc_raw is not None:
+            try:
+                acc = float(acc_raw)
+            except Exception:
+                acc = None
+
+        if score is None and acc is not None:
+            score = acc
+        if acc is None and score is not None:
+            acc = score
+        return score, acc
+
+    return None, None
+
+
 def _parse_ground_truth(reward_model: Any) -> dict[str, Any] | None:
     if not isinstance(reward_model, dict):
         return None
@@ -139,6 +250,10 @@ def _is_inverse_task(data_source: str) -> bool:
     return "-backward-" in data_source or "-preimage-" in data_source
 
 
+def _is_codeio_multi(data_source: str) -> bool:
+    return "codeio-nb-multi-" in data_source or "codeio-multi-" in data_source
+
+
 def _extract_model_answer_text(response: str) -> str | None:
     m = _ANSWER_RE.search(response)
     if not m:
@@ -158,29 +273,128 @@ def _build_ref_fn(ref_code: str, funcname: str) -> object:
     return env[funcname]
 
 
-def _inverse_exec_block(gt: dict[str, Any], response: str) -> str:
-    pred_x = _extract_model_answer_text(response)
-    if pred_x is None:
-        return "pred_x: <missing <answer>...</answer>>"
+def _is_close(pred: Any, target: Any, tol: float = 0.001) -> bool:
+    if isinstance(pred, dict) and isinstance(target, dict):
+        if pred.keys() != target.keys():
+            return False
+        return all(_is_close(pred[k], target[k], tol) for k in pred)
+
+    if isinstance(pred, list) and isinstance(target, list):
+        if len(pred) != len(target):
+            return False
+        return all(_is_close(p, t, tol) for p, t in zip(pred, target))
+
+    if isinstance(pred, (int, float)) and isinstance(target, (int, float)):
+        try:
+            if isinstance(pred, float) or isinstance(target, float):
+                if pred != pred or target != target:  # NaN
+                    return False
+                if pred in (float("inf"), float("-inf")) or target in (float("inf"), float("-inf")):
+                    return False
+                return abs(pred - target) <= tol * abs(target) and int(pred) == int(target)
+            return pred == target
+        except Exception:
+            return False
+
+    return pred == target
+
+
+def _dedupe_keep_order(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in items:
+        if item in seen:
+            continue
+        seen.add(item)
+        out.append(item)
+    return out
+
+
+def _inverse_exec_block(gt: dict[str, Any], response: str, data_source: str) -> str:
+    answer_text = _extract_model_answer_text(response)
+    if answer_text is None:
+        return "answer: <missing <answer>...</answer>>"
 
     ref_output = gt.get("ref_output")
     ref_code = gt.get("ref_code")
     funcname = gt.get("funcname", "main_solution")
     if not isinstance(ref_code, str) or not ref_code.strip():
-        return f"pred_x: {json.dumps(pred_x)}\nerror: missing ref_code"
+        return f"answer: {json.dumps(answer_text)}\nerror: missing ref_code"
 
-    if _CODEIO_FUNC_ENV is None:
-        return f"pred_x: {json.dumps(pred_x)}\nerror: could not import projects.datasets.create_string_data (func_XX env)"
+    is_close_fn = _is_close
+    build_ref_fn = _build_ref_fn
+    try:
+        from verl.utils.reward_score import codeio as _reward_codeio  # type: ignore
+
+        is_close_fn = getattr(_reward_codeio, "is_close", _is_close)
+        build_ref_fn = getattr(_reward_codeio, "_build_codeio_ref_fn", _build_ref_fn)
+    except Exception:
+        pass
+
+    if _CODEIO_FUNC_ENV is None and build_ref_fn is _build_ref_fn:
+        return (
+            f"answer: {json.dumps(answer_text)}\n"
+            "error: could not import projects.datasets.create_string_data (func env missing)"
+        )
 
     try:
-        ref_fn = _build_ref_fn(ref_code, str(funcname))
+        ref_fn = build_ref_fn(str(ref_code), str(funcname))
         if not callable(ref_fn):
-            return f"pred_x: {json.dumps(pred_x)}\nerror: {funcname!r} is not callable after exec(ref_code)"
+            return f"answer: {json.dumps(answer_text)}\nerror: {funcname!r} is not callable after exec(ref_code)"
+    except Exception as e:
+        return f"answer: {json.dumps(answer_text)}\nerror: build ref_fn failed: {e!r}"
+
+    if _is_codeio_multi(data_source) and "preimage" in data_source:
+        raw_candidates = re.findall(r"\d+", answer_text)
+        if not raw_candidates:
+            return f"answer: {json.dumps(answer_text)}\nerror: no digit candidates in <answer>..."
+
+        unique_candidates = _dedupe_keep_order(raw_candidates)[:5]
+
+        try:
+            num_answers = int(gt.get("num_answers", 2))
+        except Exception:
+            num_answers = 2
+        if num_answers <= 0:
+            num_answers = 2
+
+        correct: list[str] = []
+        per_cand: list[str] = []
+        for cand in unique_candidates:
+            try:
+                execed_output = ref_fn(str(cand))
+                ok = bool(is_close_fn(execed_output, ref_output))
+                if ok:
+                    correct.append(cand)
+                per_cand.append(
+                    f"cand: {json.dumps(cand)}\n"
+                    f"exec_output: {json.dumps(execed_output, ensure_ascii=False)}\n"
+                    f"match: {ok}"
+                )
+            except Exception as e:
+                per_cand.append(f"cand: {json.dumps(cand)}\nerror: exec/run failed: {e!r}")
+
+        score = min(len(correct), num_answers) / float(num_answers)
+        match = len(correct) >= num_answers
+
+        header = (
+            f"answer: {json.dumps(answer_text)}\n"
+            f"candidates: {json.dumps(unique_candidates, ensure_ascii=False)}\n"
+            f"correct: {json.dumps(correct, ensure_ascii=False)}\n"
+            f"target_output: {json.dumps(ref_output, ensure_ascii=False)}\n"
+            f"num_answers: {num_answers}\n"
+            f"score: {score:.4f}\n"
+            f"match: {match}"
+        )
+        return header + "\n\n" + "\n\n".join(per_cand)
+
+    pred_x = answer_text
+    try:
         execed_output = ref_fn(str(pred_x))
     except Exception as e:
         return f"pred_x: {json.dumps(pred_x)}\nerror: exec/run failed: {e!r}"
 
-    match = execed_output == ref_output
+    match = bool(is_close_fn(execed_output, ref_output))
     return (
         f"pred_x: {json.dumps(pred_x)}\n"
         f"exec_output: {json.dumps(execed_output, ensure_ascii=False)}\n"
@@ -251,7 +465,7 @@ def _build_groups(
             if gt is None:
                 inverse_exec_info = ["error: could not parse reward_model.ground_truth"] * len(responses)
             else:
-                inverse_exec_info = [_inverse_exec_block(gt, r) for r in responses]
+                inverse_exec_info = [_inverse_exec_block(gt, r, data_source) for r in responses]
 
         groups.append(
             RowGroup(
@@ -273,7 +487,95 @@ def _cell_pre(text: str) -> str:
     return f"<pre class='cell-pre'>{html_escape(text)}</pre>"
 
 
-def _render_html(groups: list[RowGroup], title: str) -> str:
+def _compute_summary(
+    dataset: Any,
+    *,
+    start: int,
+    end: int,
+    max_responses: int | None,
+) -> RolloutSummary:
+    try:
+        from verl.utils.reward_score import _default_compute_score as compute_score  # type: ignore
+    except Exception as e:
+        return RolloutSummary(
+            acc_mean=None,
+            avg_score=None,
+            scored_response_rows=0,
+            error_count=0,
+            note=f"metrics unavailable: {e!r}",
+        )
+
+    score_sum = 0.0
+    acc_sum = 0.0
+    scored = 0
+    errors = 0
+
+    for i in _tqdm(range(start, end), total=max(0, end - start), desc="Scoring"):
+        row = dataset[int(i)]
+        data_source = str(row.get("data_source") or "")
+        reward_model = row.get("reward_model") or {}
+        if not isinstance(reward_model, dict):
+            reward_model = {}
+        ground_truth = reward_model.get("ground_truth")
+        if isinstance(ground_truth, (dict, list)):
+            ground_truth = _json_dumps_best_effort(ground_truth)
+
+        responses_raw = row.get("responses") or []
+        if isinstance(responses_raw, list):
+            responses = [str(r) for r in responses_raw]
+        else:
+            responses = [str(responses_raw)]
+
+        if max_responses is not None:
+            responses = responses[:max_responses]
+
+        if not responses:
+            continue
+
+        for resp in responses:
+            if ground_truth is None:
+                errors += 1
+                continue
+            try:
+                result = compute_score(data_source, resp, ground_truth, extra_info=row.get("extra_info"))
+            except Exception:
+                errors += 1
+                continue
+
+            score, acc = _coerce_score_acc(result)
+            if score is None and acc is None:
+                errors += 1
+                continue
+            if score is None:
+                score = acc
+            if acc is None:
+                acc = score
+            if score is None or acc is None:
+                errors += 1
+                continue
+
+            score_sum += float(score)
+            acc_sum += float(acc)
+            scored += 1
+
+    if scored == 0:
+        return RolloutSummary(
+            acc_mean=None,
+            avg_score=None,
+            scored_response_rows=0,
+            error_count=errors,
+            note="no scorable responses found",
+        )
+
+    return RolloutSummary(
+        acc_mean=acc_sum / float(scored),
+        avg_score=score_sum / float(scored),
+        scored_response_rows=scored,
+        error_count=errors,
+    )
+
+
+def _render_html(groups: list[RowGroup], title: str, summary: RolloutSummary | None) -> str:
     rows_html: list[str] = []
     total_response_rows = sum(len(g.responses) for g in groups)
 
@@ -326,7 +628,7 @@ def _render_html(groups: list[RowGroup], title: str) -> str:
 </head>
 <body>
   <h1>{html_escape(title)}</h1>
-  <div class="meta">examples: {len(groups)} · response rows: {total_response_rows}</div>
+  <div class="meta">{html_escape(_render_meta(groups=groups, total_response_rows=total_response_rows, summary=summary))}</div>
   <table>
     <thead>
       <tr>
@@ -346,6 +648,33 @@ def _render_html(groups: list[RowGroup], title: str) -> str:
 </body>
 </html>
 """
+
+
+def _render_meta(*, groups: list[RowGroup], total_response_rows: int, summary: RolloutSummary | None) -> str:
+    parts: list[str] = []
+    if summary is not None:
+        if summary.acc_mean is None:
+            parts.append("acc: N/A")
+        else:
+            parts.append(f"acc: {summary.acc_mean:.4f}")
+
+        if summary.avg_score is None:
+            parts.append("avg_score: N/A")
+        else:
+            parts.append(f"avg_score: {summary.avg_score:.4f}")
+
+    parts.append(f"examples: {len(groups)}")
+    parts.append(f"response rows: {total_response_rows}")
+
+    if summary is not None:
+        if summary.scored_response_rows:
+            parts.append(f"scored rows: {summary.scored_response_rows}")
+        if summary.error_count:
+            parts.append(f"metric errors: {summary.error_count}")
+        if summary.note:
+            parts.append(summary.note)
+
+    return " · ".join(parts)
 
 
 def main() -> int:
@@ -381,6 +710,11 @@ def main() -> int:
         default=None,
         help="Max responses per example (default: all).",
     )
+    parser.add_argument(
+        "--metrics",
+        action="store_true",
+        help="Compute acc/avg_score over rendered rows and show them in the HTML (can be slow).",
+    )
     args = parser.parse_args()
 
     parquet_path: Path = args.parquet
@@ -405,8 +739,14 @@ def main() -> int:
         limit=limit,
         max_responses=args.max_responses,
     )
+    summary = None
+    if args.metrics:
+        total = len(dataset)
+        start = max(0, args.start)
+        end = total if limit is None else min(total, start + limit)
+        summary = _compute_summary(dataset, start=start, end=end, max_responses=args.max_responses)
     title = f"Rollout viewer: {parquet_path}"
-    out_path.write_text(_render_html(groups, title=title), encoding="utf-8")
+    out_path.write_text(_render_html(groups, title=title, summary=summary), encoding="utf-8")
     print(f"Wrote: {out_path}")
     return 0
 

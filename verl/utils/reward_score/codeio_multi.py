@@ -7,6 +7,13 @@ from . import codeio as _codeio
 
 do_print = False
 original_print = print
+# Reward shaping:
+# - `format_score` is 1.0 iff the model outputs exactly `num_answers` distinct
+#   digit-string candidates (parsed from the <answer>...</answer> block).
+# - `acc` is an "anti-stuffing" accuracy: we score against a worst-case
+#   selection of `num_answers` candidates by matching wrong candidates first.
+# The returned `score` blends the two to keep rewards in [0, 1].
+_FORMAT_WEIGHT = 0.1
 
 
 def print(*args, **kwargs):  # type: ignore
@@ -52,8 +59,12 @@ def compute_score_multi_preimage(solution_candidates: list[str], ground_truth: d
         print("[Error] Invalid num_answers in ground_truth.")
         return -1, 0
 
-    max_candidates = 5
-    unique_candidates = _dedupe_keep_order(solution_candidates)[:max_candidates]
+    # NOTE: `num_answers` is produced by `projects/datasets/create_string_data_multi.py`
+    # and stored in the sample's ground_truth JSON. We intentionally do *not*
+    # hard-code it here.
+    unique_candidates = _dedupe_keep_order(solution_candidates)
+    format_ok = len(solution_candidates) == num_answers and len(unique_candidates) == num_answers
+    format_score = 1.0 if format_ok else 0.0
 
     try:
         ref_fn = _codeio._build_codeio_ref_fn(str(ref_code), funcname)
@@ -64,18 +75,45 @@ def compute_score_multi_preimage(solution_candidates: list[str], ground_truth: d
         print(f"[Error] Failed to build reference function: {e}")
         return -1, 0
 
-    correct: list[str] = []
-    for cand in unique_candidates:
-        try:
-            execed_output = ref_fn(str(cand))
-        except Exception:
-            continue
-        if _codeio.is_close(execed_output, ref_output):
-            correct.append(cand)
+    # Anti-stuffing accuracy: "match wrong ones first" (order-independent).
+    #
+    # Intuition: We assume an adversary selects `num_answers` candidates from the
+    # model's set and tries to minimize correctness by picking wrong ones first.
+    #
+    # If there are >= num_answers wrong candidates (or missing distinct answers),
+    # accuracy is forced to 0.
+    #
+    # We treat missing distinct answers as wrong, so duplicates don't help.
+    missing = max(0, num_answers - len(unique_candidates))
 
-    # Partial credit: each distinct correct preimage contributes 1/num_answers.
-    score = min(len(correct), num_answers) / float(num_answers)
-    acc = score
+    # Defensive cap: if the model outputs a huge number of candidates, treat the
+    # tail as wrong (conservative) to avoid slow reward computation and to
+    # discourage stuffing.
+    max_eval_unique = 64
+    num_unevaluated = max(0, len(unique_candidates) - max_eval_unique)
+    eval_candidates = unique_candidates[:max_eval_unique]
+
+    wrong = 0
+    wrong_budget = num_answers - missing - num_unevaluated
+    if wrong_budget <= 0:
+        acc = 0.0
+    else:
+        for cand in eval_candidates:
+            if wrong >= wrong_budget:
+                break
+            try:
+                execed_output = ref_fn(str(cand))
+                ok = bool(_codeio.is_close(execed_output, ref_output))
+            except Exception:
+                ok = False
+            if not ok:
+                wrong += 1
+
+        effective_wrong = wrong + missing + num_unevaluated
+        acc = 0.0 if effective_wrong >= num_answers else (num_answers - effective_wrong) / float(num_answers)
+
+    # Blend format + accuracy into a single bounded training reward.
+    score = float(_FORMAT_WEIGHT * format_score + (1.0 - _FORMAT_WEIGHT) * acc)
     return score, acc
 
 

@@ -2,7 +2,7 @@ set -x
 
 export MODEL_PATH=disk/checkpoints/numerical-task/stage1-rft-qwen2.5-7b-instruct-nb-v2
 export PROJECT_NAME=numerical-task-rl
-export EXPERIMENT_NAME=stage2-rl-level1to2-qwen2.5-7b-instruct-nb-v2-multi-preimage-k2-balanced
+export EXPERIMENT_NAME=stage2-rl-level1to2-qwen2.5-7b-instruct-nb-v2-multi-preimage-k2-balanced-fix-reward
 export TRAIN_FILES="['data/numerical_task/stage2_rl_level1_multi_preimage_nb_v2_balanced/train.parquet']"
 export VAL_FILES="['data/numerical_task/stage2_rl_level1_multi_preimage_nb_v2_balanced/test.parquet']"
 export NNODES=1
