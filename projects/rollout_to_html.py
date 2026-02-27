@@ -349,14 +349,22 @@ def _inverse_exec_block(gt: dict[str, Any], response: str, data_source: str) -> 
         if not raw_candidates:
             return f"answer: {json.dumps(answer_text)}\nerror: no digit candidates in <answer>..."
 
-        unique_candidates = _dedupe_keep_order(raw_candidates)[:5]
-
-        try:
-            num_answers = int(gt.get("num_answers", 2))
-        except Exception:
-            num_answers = 2
+        num_answers = 2
+        gt_info = gt.get("gt_info")
+        if isinstance(gt_info, dict):
+            try:
+                num_answers = int(gt_info.get("num_answers"))  # type: ignore[arg-type]
+            except Exception:
+                num_answers = 2
+        if num_answers <= 0:
+            try:
+                num_answers = int(gt.get("num_answers", 2))
+            except Exception:
+                num_answers = 2
         if num_answers <= 0:
             num_answers = 2
+
+        unique_candidates = _dedupe_keep_order(raw_candidates)[: max(5, min(num_answers, 64))]
 
         correct: list[str] = []
         per_cand: list[str] = []

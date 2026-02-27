@@ -42,6 +42,33 @@ def _parse_multi_preimage_answer(answer_text: str) -> list[str]:
     return re.findall(r"\d+", answer_text)
 
 
+def _get_num_answers_from_ground_truth(ground_truth: dict[str, object]) -> int:
+    """Read `num_answers` with backward-compatible fallbacks.
+
+    Newer datasets may store this under `gt_info.num_answers`.
+    Older datasets store it at the top-level as `num_answers`.
+    """
+    # Preferred: nested metadata (`gt_info`) for eval variants.
+    gt_info = ground_truth.get("gt_info")
+    if isinstance(gt_info, dict):
+        try:
+            n = int(gt_info.get("num_answers"))  # type: ignore[arg-type]
+            if n > 0:
+                return n
+        except Exception:
+            pass
+
+    # Back-compat: top-level.
+    try:
+        n = int(ground_truth.get("num_answers", 2))
+        if n > 0:
+            return n
+    except Exception:
+        pass
+
+    return 2
+
+
 def compute_score_multi_preimage(solution_candidates: list[str], ground_truth: dict[str, object]) -> tuple[float, float]:
     if _codeio._CODEIO_FUNC_ENV is None:
         print("[Error] codeio-multi requires `projects.datasets.create_string_data` to be importable.")
@@ -51,13 +78,7 @@ def compute_score_multi_preimage(solution_candidates: list[str], ground_truth: d
     ref_code = ground_truth["ref_code"]
     funcname = str(ground_truth.get("funcname", "main_solution"))
 
-    try:
-        num_answers = int(ground_truth.get("num_answers", 2))
-    except Exception:
-        num_answers = 2
-    if num_answers <= 0:
-        print("[Error] Invalid num_answers in ground_truth.")
-        return -1, 0
+    num_answers = _get_num_answers_from_ground_truth(ground_truth)
 
     # NOTE: `num_answers` is produced by `projects/datasets/create_string_data_multi.py`
     # and stored in the sample's ground_truth JSON. We intentionally do *not*
@@ -124,6 +145,8 @@ def compute_score(solution_str: str, ground_truth: str, task: str = "codeio-nb-m
         task = task[len("codeio-multi-") :]
 
     ground_truth_obj = json.loads(ground_truth)
+    if not isinstance(ground_truth_obj, dict):
+        return -1, 0
 
     global do_print
     do_print = False

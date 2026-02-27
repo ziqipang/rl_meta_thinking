@@ -35,9 +35,15 @@ except Exception:  # pragma: no cover
         return _NoOpTqdm()
 
 
-# Import the base implementation from the sibling file, so we don't duplicate
-# the function families / code rendering logic.
-import create_string_data as base  # type: ignore
+# Import the base implementation, so we don't duplicate the function families /
+# code rendering logic.
+#
+# Prefer the repo package path (`projects.datasets`) so this script is importable
+# from other helpers, but keep a fallback for running from inside this folder.
+try:
+    from projects.datasets import create_string_data as base  # type: ignore
+except ModuleNotFoundError:  # pragma: no cover
+    import create_string_data as base  # type: ignore
 
 
 MULTI_PREIMAGE_PROMPT = (
@@ -167,7 +173,7 @@ if __name__ == "__main__":
     parser.add_argument("--min_level", type=int, default=1)
     parser.add_argument("--max_level", type=int, default=1)
     parser.add_argument("--data_num", type=int, default=5000)
-    parser.add_argument("--num_answers", type=int, default=2, help="Number of distinct preimages to request/score (<=5 recommended).")
+    parser.add_argument("--num_answers", type=int, default=2, help="Number of distinct preimages to request/score (<=6 recommended).")
     parser.add_argument("--min_len", type=int, default=2)
     parser.add_argument("--max_len", type=int, default=6)
     parser.add_argument("--search_attempts", type=int, default=2000, help="Random attempts per sample to find collisions.")
@@ -185,10 +191,14 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    if not (1 <= args.num_answers <= 5):
-        raise ValueError("--num_answers must be between 1 and 5 (inclusive)")
+    if not (1 <= args.num_answers <= 6):
+        raise ValueError("--num_answers must be between 1 and 6 (inclusive)")
     if args.min_len < 1 or args.max_len < args.min_len:
         raise ValueError("Invalid --min_len/--max_len")
+    if args.min_level < 1 or args.max_level < args.min_level:
+        raise ValueError("Invalid --min_level/--max_level")
+    if args.search_attempts < 1:
+        raise ValueError("--search_attempts must be >= 1")
     if args.estimate_attempts < 0:
         raise ValueError("--estimate_attempts must be >= 0")
     if args.estimate_max_unique < 1:
@@ -249,6 +259,8 @@ if __name__ == "__main__":
                 max_unique=args.estimate_max_unique,
             )
 
+            known_k = max(5, int(args.num_answers))
+            known_preimages = preimages[: min(len(preimages), known_k)]
             full_code = base.generate_full_code(expr, stage=args.stage, custom_functions=custom_functions)
             prompt_content = MULTI_PREIMAGE_PROMPT.format(code=full_code, output=output, num_answers=args.num_answers)
 
@@ -267,7 +279,8 @@ if __name__ == "__main__":
                             "ref_code": full_code,
                             "funcname": "main_solution",
                             "num_answers": args.num_answers,
-                            "known_preimages": preimages[: min(len(preimages), 5)],
+                            "gt_info": {"num_answers": args.num_answers},
+                            "known_preimages": known_preimages,
                             "preimage_lower_bound": len(preimages),
                             "estimate_attempts": args.estimate_attempts,
                             "estimate_hits": estimate_hits,
@@ -280,7 +293,8 @@ if __name__ == "__main__":
                     "depth": depth,
                     "direction": "backward_multi",
                     "num_answers": args.num_answers,
-                    "known_preimages": preimages[: min(len(preimages), 5)],
+                    "gt_info": {"num_answers": args.num_answers},
+                    "known_preimages": known_preimages,
                     "preimage_lower_bound": len(preimages),
                     "estimate_attempts": args.estimate_attempts,
                     "estimate_hits": estimate_hits,
