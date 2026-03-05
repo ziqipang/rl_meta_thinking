@@ -1,5 +1,5 @@
 python3 projects/datasets/create_string_data.py \
-    --save_path data/numerical_task/stage2_rl_level1_inverse_nb_v2_original/train.parquet \
+    --save_path data/numerical_task_v2/stage2_rl_level1_inverse_nb_v2_original/train.parquet \
     --stage 2 \
     --split train \
     --direction backward \
@@ -10,7 +10,7 @@ python3 projects/datasets/create_string_data.py \
     --data_num 50000
 
 python3 projects/datasets/create_string_data.py \
-    --save_path data/numerical_task/stage2_rl_level1_inverse_nb_v2_original/test.parquet \
+    --save_path data/numerical_task_v2/stage2_rl_level1_inverse_nb_v2_original/test.parquet \
     --stage 2 \
     --split test \
     --direction backward \

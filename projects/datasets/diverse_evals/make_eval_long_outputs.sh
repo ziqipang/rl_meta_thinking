@@ -1,7 +1,7 @@
-mkdir -p data/numerical_task/diverse_evals/nb_v2_balanced_long_outputs
+mkdir -p data/numerical_task_v2/diverse_evals/nb_v2_balanced_long_outputs
 
 python3 projects/datasets/diverse_evals/create_multi_preimage_eval.py \
-  --save_path data/numerical_task/diverse_evals/nb_v2_balanced_long_outputs/test.parquet \
+  --save_path data/numerical_task_v2/diverse_evals/nb_v2_balanced_long_outputs/test.parquet \
   --stage 2 \
   --split test \
   --function_kind nonbijective_v2 \

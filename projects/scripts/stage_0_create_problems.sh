@@ -1,5 +1,5 @@
 python3 projects/datasets/create_string_data.py \
-    --save_path data/numerical_task/stage1_level1/train.parquet \
+    --save_path data/numerical_task_v2/stage1_level1/train.parquet \
     --stage 1 \
     --split train \
     --min_level 1 \
@@ -7,7 +7,7 @@ python3 projects/datasets/create_string_data.py \
     --data_num 50000
 
 python3 projects/datasets/create_string_data.py \
-    --save_path data/numerical_task/stage1_level1/test.parquet \
+    --save_path data/numerical_task_v2/stage1_level1/test.parquet \
     --stage 1 \
     --split test \
     --min_level 1 \

@@ -3,12 +3,12 @@ set -x
 python3 -m verl.trainer.main_generation \
     trainer.nnodes=1 \
     trainer.n_gpus_per_node=8 \
-    data.path=data/numerical_task/stage1_level1_nb_v2/train.parquet \
+    data.path=data/numerical_task_v2/stage1_level1_nb_v2/train.parquet \
     data.prompt_key=prompt \
     data.n_samples=10 \
-    data.output_path=data/numerical_task/stage1_level1_nb_v2_3b/rollout.parquet \
+    data.output_path=data/numerical_task_v2/stage1_level1_nb_v2/rollout.parquet \
     data.batch_size=4096 \
-    model.path=disk/models/Qwen2.5-3B-Instruct \
+    model.path=disk/models/Qwen2.5-7B-Instruct \
     +model.trust_remote_code=True \
     rollout.name=vllm \
     rollout.temperature=1.0 \

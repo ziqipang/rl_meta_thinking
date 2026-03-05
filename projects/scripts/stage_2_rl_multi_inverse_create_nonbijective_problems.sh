@@ -1,7 +1,7 @@
-mkdir -p data/numerical_task/stage2_rl_level1_multi_preimage_nb_v2_balanced
+mkdir -p data/numerical_task_v2/stage2_rl_level1_multi_preimage_nb_v2_balanced
 
 python3 projects/datasets/create_string_data_multi.py \
-    --save_path data/numerical_task/stage2_rl_level1_multi_preimage_nb_v2_balanced/train.parquet \
+    --save_path data/numerical_task_v2/stage2_rl_level1_multi_preimage_nb_v2_balanced/train.parquet \
     --stage 2 \
     --split train \
     --function_kind nonbijective_v2 \
@@ -12,7 +12,7 @@ python3 projects/datasets/create_string_data_multi.py \
     --num_answers 2
 
 python3 projects/datasets/create_string_data_multi.py \
-    --save_path data/numerical_task/stage2_rl_level1_multi_preimage_nb_v2_balanced/test.parquet \
+    --save_path data/numerical_task_v2/stage2_rl_level1_multi_preimage_nb_v2_balanced/test.parquet \
     --stage 2 \
     --split test \
     --function_kind nonbijective_v2 \

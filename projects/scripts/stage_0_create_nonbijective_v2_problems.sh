@@ -1,5 +1,5 @@
 python3 projects/datasets/create_string_data.py \
-    --save_path data/numerical_task/stage1_level1_nb_v2/train.parquet \
+    --save_path data/numerical_task_v2/stage1_level1_nb_v2/train.parquet \
     --stage 1 \
     --split train \
     --function_kind nonbijective_v2 \
@@ -9,7 +9,7 @@ python3 projects/datasets/create_string_data.py \
     --data_num 50000
 
 python3 projects/datasets/create_string_data.py \
-    --save_path data/numerical_task/stage1_level1_nb_v2/test.parquet \
+    --save_path data/numerical_task_v2/stage1_level1_nb_v2/test.parquet \
     --stage 1 \
     --split test \
     --function_kind nonbijective_v2 \
