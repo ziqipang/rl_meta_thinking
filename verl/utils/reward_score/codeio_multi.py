@@ -7,12 +7,9 @@ from . import codeio as _codeio
 
 do_print = False
 original_print = print
-# Reward shaping:
-# - `format_score` is 1.0 iff the model outputs exactly `num_answers` distinct
-#   digit-string candidates (parsed from the <answer>...</answer> block).
-# - `acc` is an "anti-stuffing" accuracy: we score against a worst-case
-#   selection of `num_answers` candidates by matching wrong candidates first.
-# The returned `score` blends the two to keep rewards in [0, 1].
+# Legacy datasets use a format bonus plus anti-stuffing accuracy. Newer
+# multi-response datasets opt into alternate scoring via
+# `ground_truth.gt_info.multi_response_scoring`.
 _FORMAT_WEIGHT = 0.1
 
 
@@ -69,7 +66,21 @@ def _get_num_answers_from_ground_truth(ground_truth: dict[str, object]) -> int:
     return 2
 
 
-def compute_score_multi_preimage(solution_candidates: list[str], ground_truth: dict[str, object]) -> tuple[float, float]:
+def _get_scoring_mode_from_ground_truth(ground_truth: dict[str, object]) -> str | None:
+    gt_info = ground_truth.get("gt_info")
+    if not isinstance(gt_info, dict):
+        return None
+
+    mode = gt_info.get("multi_response_scoring")
+    if isinstance(mode, str) and mode:
+        return mode
+    return None
+
+
+def _compute_score_multi_preimage_legacy(
+    solution_candidates: list[str],
+    ground_truth: dict[str, object],
+) -> tuple[float, float]:
     if _codeio._CODEIO_FUNC_ENV is None:
         print("[Error] codeio-multi requires `projects.datasets.create_string_data` to be importable.")
         return -1, 0
@@ -80,9 +91,6 @@ def compute_score_multi_preimage(solution_candidates: list[str], ground_truth: d
 
     num_answers = _get_num_answers_from_ground_truth(ground_truth)
 
-    # NOTE: `num_answers` is produced by `projects/datasets/create_string_data_multi.py`
-    # and stored in the sample's ground_truth JSON. We intentionally do *not*
-    # hard-code it here.
     unique_candidates = _dedupe_keep_order(solution_candidates)
     format_ok = len(solution_candidates) == num_answers and len(unique_candidates) == num_answers
     format_score = 1.0 if format_ok else 0.0
@@ -96,20 +104,8 @@ def compute_score_multi_preimage(solution_candidates: list[str], ground_truth: d
         print(f"[Error] Failed to build reference function: {e}")
         return -1, 0
 
-    # Anti-stuffing accuracy: "match wrong ones first" (order-independent).
-    #
-    # Intuition: We assume an adversary selects `num_answers` candidates from the
-    # model's set and tries to minimize correctness by picking wrong ones first.
-    #
-    # If there are >= num_answers wrong candidates (or missing distinct answers),
-    # accuracy is forced to 0.
-    #
-    # We treat missing distinct answers as wrong, so duplicates don't help.
     missing = max(0, num_answers - len(unique_candidates))
 
-    # Defensive cap: if the model outputs a huge number of candidates, treat the
-    # tail as wrong (conservative) to avoid slow reward computation and to
-    # discourage stuffing.
     max_eval_unique = 64
     num_unevaluated = max(0, len(unique_candidates) - max_eval_unique)
     eval_candidates = unique_candidates[:max_eval_unique]
@@ -133,9 +129,78 @@ def compute_score_multi_preimage(solution_candidates: list[str], ground_truth: d
         effective_wrong = wrong + missing + num_unevaluated
         acc = 0.0 if effective_wrong >= num_answers else (num_answers - effective_wrong) / float(num_answers)
 
-    # Blend format + accuracy into a single bounded training reward.
     score = float(_FORMAT_WEIGHT * format_score + (1.0 - _FORMAT_WEIGHT) * acc)
     return score, acc
+
+
+def _compute_score_bijective_inverse(
+    solution_candidates: list[str],
+    ground_truth: dict[str, object],
+) -> tuple[float, float]:
+    if not solution_candidates:
+        return 0.0, 0.0
+
+    ref_input_obj = ground_truth.get("ref_input")
+    if not isinstance(ref_input_obj, dict) or "x" not in ref_input_obj:
+        print("[Error] Missing ref_input.x for bijective multi-response scoring.")
+        return -1, 0
+
+    ref_input = str(ref_input_obj["x"])
+    correct_or_not = 1 if any(_codeio.is_close(str(candidate), ref_input) for candidate in solution_candidates) else 0
+    acc = correct_or_not / float(len(solution_candidates))
+    return acc, acc
+
+
+def _compute_score_nonbijective_preimage(
+    solution_candidates: list[str],
+    ground_truth: dict[str, object],
+) -> tuple[float, float]:
+    if _codeio._CODEIO_FUNC_ENV is None:
+        print("[Error] codeio-multi requires `projects.datasets.create_string_data` to be importable.")
+        return -1, 0
+
+    ref_output = ground_truth["ref_output"]
+    ref_code = ground_truth["ref_code"]
+    funcname = str(ground_truth.get("funcname", "main_solution"))
+    num_answers = _get_num_answers_from_ground_truth(ground_truth)
+
+    if num_answers <= 0:
+        return -1, 0
+    if not solution_candidates:
+        return 0.0, 0.0
+
+    try:
+        ref_fn = _codeio._build_codeio_ref_fn(str(ref_code), funcname)
+        if not callable(ref_fn):
+            print("[Error] Reference function is not callable.")
+            return -1, 0
+    except Exception as e:
+        print(f"[Error] Failed to build reference function: {e}")
+        return -1, 0
+
+    unique_candidates = _dedupe_keep_order(solution_candidates)
+    correct_response_num = 0
+    for cand in unique_candidates:
+        try:
+            execed_output = ref_fn(str(cand))
+        except Exception:
+            continue
+        if _codeio.is_close(execed_output, ref_output):
+            correct_response_num += 1
+            if correct_response_num >= num_answers:
+                break
+
+    acc = min(correct_response_num, num_answers) / float(num_answers)
+    return acc, acc
+
+
+def compute_score_multi_preimage(solution_candidates: list[str], ground_truth: dict[str, object]) -> tuple[float, float]:
+    scoring_mode = _get_scoring_mode_from_ground_truth(ground_truth)
+    if scoring_mode == "bijective_inverse":
+        return _compute_score_bijective_inverse(solution_candidates, ground_truth)
+    if scoring_mode == "nonbijective_preimage":
+        return _compute_score_nonbijective_preimage(solution_candidates, ground_truth)
+    return _compute_score_multi_preimage_legacy(solution_candidates, ground_truth)
 
 
 def compute_score(solution_str: str, ground_truth: str, task: str = "codeio-nb-multi-preimage") -> tuple[float, float]:
