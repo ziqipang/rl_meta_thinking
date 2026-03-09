@@ -1,0 +1,6 @@
+model_path,dataset,pass@1,pass@4
+disk/checkpoints/numerical-task-v3-rl/rl-code-in-prompt-nonbijective-only/global_step_160/actor/huggingface,test.parquet,0.2265625,0.05859375
+disk/checkpoints/numerical-task-v3-rl/rl-code-in-prompt-nonbijective-only/global_step_160/actor/huggingface,test.parquet,0.03350830078125,0.0
+disk/checkpoints/numerical-task-v3-rl/rl-code-in-prompt-nonbijective-only/global_step_160/actor/huggingface,test.parquet,0.2541579182942708,0.0078125
+disk/checkpoints/numerical-task-v3-rl/rl-code-in-prompt-nonbijective-only/global_step_160/actor/huggingface,test.parquet,0.20999755859375002,0.0087890625
+disk/checkpoints/numerical-task-v3-rl/rl-code-in-prompt-nonbijective-only/global_step_160/actor/huggingface,test.parquet,0.05145121256510418,0.0009765625

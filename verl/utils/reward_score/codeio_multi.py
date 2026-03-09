@@ -39,6 +39,23 @@ def _parse_multi_preimage_answer(answer_text: str) -> list[str]:
     return re.findall(r"\d+", answer_text)
 
 
+def _compute_optional_shortfall_accuracy(
+    *,
+    correct_unique: int,
+    submitted_count: int,
+    required_count: int,
+) -> float:
+    """Score optional-shortfall multi-response tasks.
+
+    The model should submit up to `required_count` answers, but fewer are correct
+    when the task truly has fewer valid solutions. We therefore reward unique
+    correct answers while penalizing over-generation via the denominator.
+    """
+    if required_count <= 0 or submitted_count <= 0 or correct_unique <= 0:
+        return 0.0
+    return min(correct_unique, required_count) / float(max(required_count, submitted_count))
+
+
 def _get_num_answers_from_ground_truth(ground_truth: dict[str, object]) -> int:
     """Read `num_answers` with backward-compatible fallbacks.
 
@@ -81,10 +98,6 @@ def _compute_score_multi_preimage_legacy(
     solution_candidates: list[str],
     ground_truth: dict[str, object],
 ) -> tuple[float, float]:
-    if _codeio._CODEIO_FUNC_ENV is None:
-        print("[Error] codeio-multi requires `projects.datasets.create_string_data` to be importable.")
-        return -1, 0
-
     ref_output = ground_truth["ref_output"]
     ref_code = ground_truth["ref_code"]
     funcname = str(ground_truth.get("funcname", "main_solution"))
@@ -146,8 +159,13 @@ def _compute_score_bijective_inverse(
         return -1, 0
 
     ref_input = str(ref_input_obj["x"])
-    correct_or_not = 1 if any(_codeio.is_close(str(candidate), ref_input) for candidate in solution_candidates) else 0
-    acc = correct_or_not / float(len(solution_candidates))
+    unique_candidates = _dedupe_keep_order(solution_candidates)
+    correct_unique = 1 if any(_codeio.is_close(str(candidate), ref_input) for candidate in unique_candidates) else 0
+    acc = _compute_optional_shortfall_accuracy(
+        correct_unique=correct_unique,
+        submitted_count=len(solution_candidates),
+        required_count=1,
+    )
     return acc, acc
 
 
@@ -155,10 +173,6 @@ def _compute_score_nonbijective_preimage(
     solution_candidates: list[str],
     ground_truth: dict[str, object],
 ) -> tuple[float, float]:
-    if _codeio._CODEIO_FUNC_ENV is None:
-        print("[Error] codeio-multi requires `projects.datasets.create_string_data` to be importable.")
-        return -1, 0
-
     ref_output = ground_truth["ref_output"]
     ref_code = ground_truth["ref_code"]
     funcname = str(ground_truth.get("funcname", "main_solution"))
@@ -190,7 +204,11 @@ def _compute_score_nonbijective_preimage(
             if correct_response_num >= num_answers:
                 break
 
-    acc = min(correct_response_num, num_answers) / float(num_answers)
+    acc = _compute_optional_shortfall_accuracy(
+        correct_unique=correct_response_num,
+        submitted_count=len(solution_candidates),
+        required_count=num_answers,
+    )
     return acc, acc
 
 

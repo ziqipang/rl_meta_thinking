@@ -1,0 +1,7 @@
+model_path,dataset,pass@1,pass@4
+disk/checkpoints/numerical-task-v3-rl/rl-code-in-prompt-both-bijective-and-nonbijective/global_step_160/actor/huggingface,test.parquet,0.332275390625,0.3427734375
+disk/checkpoints/numerical-task-v3-rl/rl-code-in-prompt-both-bijective-and-nonbijective/global_step_160/actor/huggingface,test.parquet,0.24395751953125,0.3955078125
+disk/checkpoints/numerical-task-v3-rl/rl-code-in-prompt-both-bijective-and-nonbijective/global_step_160/actor/huggingface,test.parquet,-0.000244140625,0.0
+disk/checkpoints/numerical-task-v3-rl/rl-code-in-prompt-both-bijective-and-nonbijective/global_step_160/actor/huggingface,test.parquet,0.284154052734375,0.14453125
+disk/checkpoints/numerical-task-v3-rl/rl-code-in-prompt-both-bijective-and-nonbijective/global_step_160/actor/huggingface,test.parquet,0.23677978515625003,0.0966796875
+disk/checkpoints/numerical-task-v3-rl/rl-code-in-prompt-both-bijective-and-nonbijective/global_step_160/actor/huggingface,test.parquet,0.11725484212239586,0.13671875
