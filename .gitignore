@@ -2,6 +2,8 @@ disk
 data
 outputs
 wandb
+htmls
+rollouts
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -1,0 +1,926 @@
+==========================================================================================
+v3_mix QUALITATIVE ANALYSIS
+Deep-dive into reasoning patterns across SFT, NB-Only RL, and Both RL models
+==========================================================================================
+
+==========================================================================================
+QUALITATIVE ANALYSIS: nonbijective_test
+==========================================================================================
+
+--- Reasoning Strategy Distribution ---
+
+  Model: SFT Baseline (400 responses, 104 correct [26.0%])
+    Systematic Inversion        29/400 (7.2%)  acc=0.0%
+    Enumeration/Trial            4/400 (1.0%)  acc=25.0%
+    Case Analysis                2/400 (0.5%)  acc=0.0%
+    Verification                40/400 (10.0%)  acc=27.5%
+    Pattern Matching            37/400 (9.2%)  acc=18.9%
+    Digit Manipulation         375/400 (93.8%)  acc=24.0%
+    Recognizes Uniqueness       20/400 (5.0%)  acc=15.0%
+    Mentions None                0/400 (0.0%)  acc=0.0%
+
+  Model: NB-Only RL (400 responses, 321 correct [80.2%])
+    Systematic Inversion         3/400 (0.8%)  acc=33.3%
+    Enumeration/Trial          327/400 (81.8%)  acc=79.5%
+    Case Analysis                0/400 (0.0%)  acc=0.0%
+    Verification                56/400 (14.0%)  acc=80.4%
+    Pattern Matching            12/400 (3.0%)  acc=58.3%
+    Digit Manipulation         251/400 (62.7%)  acc=78.5%
+    Recognizes Uniqueness       10/400 (2.5%)  acc=50.0%
+    Mentions None                1/400 (0.2%)  acc=0.0%
+
+  Model: Both RL (400 responses, 289 correct [72.2%])
+    Systematic Inversion        48/400 (12.0%)  acc=47.9%
+    Enumeration/Trial           60/400 (15.0%)  acc=51.7%
+    Case Analysis                1/400 (0.2%)  acc=0.0%
+    Verification                63/400 (15.8%)  acc=63.5%
+    Pattern Matching            39/400 (9.8%)  acc=66.7%
+    Digit Manipulation         337/400 (84.2%)  acc=70.0%
+    Recognizes Uniqueness       24/400 (6.0%)  acc=66.7%
+    Mentions None                0/400 (0.0%)  acc=0.0%
+
+--- Strategy Co-occurrence (Inversion & Enumeration) ---
+
+  SFT Baseline:
+    Inv+Enum:     0 (0.0%) acc=0.0%
+    Inv only:    29 (7.2%) acc=0.0%
+    Enum only:    4 (1.0%) acc=25.0%
+    Neither:    367 (91.8%) acc=28.1%
+
+  NB-Only RL:
+    Inv+Enum:     3 (0.8%) acc=33.3%
+    Inv only:     0 (0.0%) acc=0.0%
+    Enum only:  324 (81.0%) acc=79.9%
+    Neither:     73 (18.2%) acc=83.6%
+
+  Both RL:
+    Inv+Enum:    11 (2.8%) acc=81.8%
+    Inv only:    37 (9.2%) acc=37.8%
+    Enum only:   49 (12.2%) acc=44.9%
+    Neither:    303 (75.8%) acc=80.5%
+
+--- Error Mode Breakdown (incorrect responses only) ---
+
+  SFT Baseline (296 wrong responses):
+    Computation error (good strategy, bad math):   29 (9.8%)
+    Enumeration failure (tried guessing, failed):    3 (1.0%)
+    Inversion failure (unclear error):               0 (0.0%)
+    Format error (no candidates):                    1 (0.3%)
+    Truncated (hit max length):                      0 (0.0%)
+
+  NB-Only RL (79 wrong responses):
+    Computation error (good strategy, bad math):    0 (0.0%)
+    Enumeration failure (tried guessing, failed):   65 (82.3%)
+    Inversion failure (unclear error):               0 (0.0%)
+    Format error (no candidates):                   10 (12.7%)
+    Truncated (hit max length):                      0 (0.0%)
+
+  Both RL (111 wrong responses):
+    Computation error (good strategy, bad math):   23 (20.7%)
+    Enumeration failure (tried guessing, failed):   27 (24.3%)
+    Inversion failure (unclear error):               0 (0.0%)
+    Format error (no candidates):                   37 (33.3%)
+    Truncated (hit max length):                      0 (0.0%)
+
+--- Response Length by Correctness ---
+
+  SFT Baseline:
+    Correct: mean=1163 chars, median=1025
+    Wrong:   mean=1329 chars, median=1208
+    Ratio:   1.14x
+
+  NB-Only RL:
+    Correct: mean=5382 chars, median=4258
+    Wrong:   mean=11318 chars, median=10683
+    Ratio:   2.10x
+
+  Both RL:
+    Correct: mean=5723 chars, median=4476
+    Wrong:   mean=12839 chars, median=12862
+    Ratio:   2.24x
+
+
+──────────────────────────────────────────────────────────────────────────────────────────
+REPRESENTATIVE EXAMPLES
+──────────────────────────────────────────────────────────────────────────────────────────
+
+=== Category: Both-RL correct, NB-Only wrong ===
+
+  Problem idx=59, func=None, ref_output=30
+    Both-RL (correct, score=1.00): strategies=['verification', 'digit-manip']
+      Thinking (first 500 chars): Given the function `func_48`, we need to determine the input string that would produce the output "30" when passed through the process.
+
+Let's break it down step-by-step for the input "30".
+
+1. **Initialization**: `st` is initialized to 0.
+
+2. **First character "3"**:
+   - `st = (3 * 0 + _d("3")) % 10 = (3 * 0 + 3) % 10 = 3`
+   - `out.append(_c(3 // 2)) = out.append(_c(1)) = out.append("1")`
+   - So, `out` is now `["1"]`.
+
+3. **Second character "0"**:
+   - `st = (3 * 3 + _d("0")) % 10 = (9 + 0) ...
+      Answer: 70,63
+    NB-Only (wrong, score=0.00): strategies=['enumeration']
+      Thinking (first 500 chars): Given the function `func_48`, we need to determine the input string that would produce the output "30" through the transformation rules described.
+
+Let's break it down step-by-step for the input "30".
+
+1. **Initialization**: The initial state `st` is 0.
+2. **Processing "3"**:
+   - `st = (3 * 0 + _d("3")) % 10 = (0 + 3) % 10 = 3`
+   - State update: `st = 3`
+   - Output: `_c(3 // 2) = _c(1) = "1"`
+3. **Processing "0"**:
+   - `st = (3 * 3 + _d("0")) % 10 = (9 + 0) % 10 = 9`
+   - State update: `st =...
+      Answer: 34,35
+
+  Problem idx=280, func=None, ref_output=34
+    Both-RL (correct, score=1.00): strategies=['digit-manip']
+      Thinking (first 500 chars): The function `func_48` processes the input string digit by digit, updating the state and outputting digits based on the state. The state is updated as `(3 * st + _d(ch)) % 10` for each input digit `ch`, and the output is `st // 2` after folding down to 0..4 by `_fold0to4`.
+
+Let's break down the input "34":
+
+1. For the first digit "3":
+   - Initial state `st` is 0.
+   - Update state: `(3 * 0 + _d("3")) % 10 = (0 + 3) % 10 = 3`.
+   - Output: `3 // 2 = 1`.
+
+2. For the second digit "4":
+   - Current...
+      Answer: 77,78
+    NB-Only (wrong, score=0.00): strategies=['digit-manip']
+      Thinking (first 500 chars): To find two digit inputs such that `main_solution(x)` returns "34", I will analyze the function `func_48` step by step.
+
+1. For the input "3":
+   - First, we use `_d` to convert the character '3' to the integer 3.
+   - The state starts at 0.
+   - The first output character is determined by `(3 * 0 + 3) // 2 = 1`. Then, `_c(1)` converts this to '1'.
+   - The state becomes `(3 * 1 + 3) % 10 = 6`.
+   - The next character is `_c(6 // 2) = _c(3)`, which converts to '3'.
+
+2. For the input "4":
+   - Fi...
+      Answer: 35,36
+
+  Problem idx=447, func=None, ref_output=34
+    Both-RL (correct, score=1.00): strategies=['digit-manip']
+      Thinking (first 500 chars): To find the two different digit inputs `x` that result in `main_solution(x)` returning "34", let's break down the function step by step.
+
+1. `func_48` takes a string `s` and processes it.
+2. It initializes `st` to 0 and creates an empty list `out`.
+3. For each character `ch` in the string `s`, it:
+   - Converts the character to a digit `(d)` using `_d(ch)`.
+   - Updates `st` with `(3 * d + st) % 10`.
+   - Appends `out` with `st // 2` converted back to a character using `_c(st // 2)`.
+
+Given `mai...
+      Answer: 60,61
+    NB-Only (wrong, score=0.00): strategies=['enumeration']
+      Thinking (first 500 chars): Given the function `func_48`, we need to determine the input `x` such that the output is "34". Let's break down the process step-by-step for the input "34":
+
+1. Initialize `st` to 0.
+2. For the first character '3':
+   - `_d('3')` returns 3.
+   - Update `st` to `(3 * 0 + 3) % 10 = 3`.
+   - Append `_c(3 // 2)` which is `_c(1)` -> '1'.
+3. For the second character '4':
+   - `_d('4')` returns 4.
+   - Update `st` to `(3 * 3 + 4) % 10 = 13 % 10 = 3`.
+   - Append `_c(3 // 2)` which is `_c(1)` -> '1'.
+
+S...
+      Answer: 31,39
+
+=== Category: NB-Only correct, Both-RL wrong ===
+
+  Problem idx=23, func=None, ref_output=888
+    NB-Only (correct, score=0.50): strategies=[]
+      Thinking (first 500 chars): Given the function `func_36`, we can analyze its behavior step by step to understand how it transforms the input string "888" and then determine the input for which the result is "888".
+
+1. **Input: "888"**
+   - Length `n` = 3 (since there are 3 characters)
+   - For each index `i` (0, 1, 2), calculate `a = _d(s[i])`, `b = _d(s[(i + 1) % n])`, and `c = _d(s[(i + 2) % n])`.
+
+2. **Iteration 0 (i = 0):**
+   - `a = 8`, `b = 8`, `c = 8`
+   - The output character is `_c(max(8, 8, 8) - min(8, 8, 8)) = _...
+      Answer: 880,879
+    Both-RL (wrong, score=0.00): strategies=[]
+      Thinking (first 500 chars): Given the function `func_36`, we can break down the process for the input "888".
+
+1. The input string is "888", which has a length of 3.
+2. For each position `i` in the string, we need to find the maximum and minimum of `_d(s[i])`, `_d(s[(i + 1) % n])`, and `_d(s[(i + 2) % n])`, and then take the difference.
+
+Let's go through each position:
+
+- For `i = 0`: 
+  - `a = _d(s[0]) = 8`
+  - `b = _d(s[1]) = 8`
+  - `c = _d(s[2]) = 8`
+  - `max(a, b, c) = 8`, `min(a, b, c) = 8`
+  - `abs(max(a, b, c) - min(...
+      Answer: 899,988
+
+  Problem idx=215, func=None, ref_output=77
+    NB-Only (correct, score=1.00): strategies=['enumeration']
+      Thinking (first 500 chars): Given the function `func_33`, we need to analyze how it processes the input string "77" and find other input strings that result in "77" when passed through the function.
+
+1. The input string is "77", so `n = 2`. It will process two characters: the first is "7" and the second is also "7".
+2. Convert each character to its numeric value using `_d`:
+   - `_d("7") = 7`
+   - `_d("7") = 7`
+3. For each position `i` (0 and 1):
+   - When `i = 0`, `a = 7` and `b = 7` (since it's a cyclic string).
+   - Com...
+      Answer: 70,81
+    Both-RL (wrong, score=0.00): strategies=['enumeration']
+      Thinking (first 500 chars): Given the function `func_33`, we need to analyze how it processes the input string. The function splits the string into digits and performs a cyclic merge operation. Let's break down the steps for the input "77".
+
+1. The input string is "77".
+2. For the first digit '7' (at index 0), we will consider it paired with the second digit '7' (at index 1) and also '7' at index 0 due to the cyclic nature.
+3. We calculate `a = _d('7') = 7` and `b = _d('7') = 7`.
+4. Compute `u = min(a + b, 9) = min(7 + 7, ...
+      Answer: 79,97
+
+  Problem idx=277, func=None, ref_output=777
+    NB-Only (correct, score=1.00): strategies=['enumeration']
+      Thinking (first 500 chars): Given the function `func_36`, we can analyze it step-by-step:
+
+1. The input "777" has a length of 3.
+2. For each character, we call `_d` to convert it to an integer, then take the maximum and minimum of the three values and compute the difference.
+
+For "777":
+- a = 7, b = 7, c = 7
+- max(7, 7, 7) - min(7, 7, 7) = 7 - 7 = 0
+- Result: "000"
+
+This does not match the given output "777". Let's look for another input.
+
+For "778":
+- Take each three consecutive characters (considering the string cyclical...
+      Answer: 729,927
+    Both-RL (wrong, score=0.00): strategies=[]
+      Thinking (first 500 chars): Given the function `func_36`, we can break down the process of how it works for the input "777".
+
+1. The length of the input string is 3, so we will have 3 iterations in the for loop.
+2. For each character, we calculate the difference between the current character and the next character (considering the string cyclically).
+
+Let's go through the loop for each character:
+- For `i = 0`, `a = 7`, `b = 7`, and `c = 7`.
+  - `max(a, b, c) - min(a, b, c) = 7 - 7 = 0`.
+  - So, the first character will be...
+      Answer: 779,787
+
+=== Category: Heavy Enumeration Examples ===
+
+  NB-Only RL, idx=3, func=None, correct=True, score=0.50
+    Candidates tried: 11, submitted: 2
+    Thinking (first 600 chars): Given the function `func_36(s: str) -> str`, we need to find two different digit strings `x` such that `main_solution(x)` returns the string "00".
+
+Let's break it down step by step for the input "00".
+
+1. The input string `s` is "00".
+2. The length `n` of the string is 2.
+3. We need to compute the result for each character with the next character wrapping around modulo the length. So for "00":
+   - For the first character '0' (index 0), the next character is the second character '0' (index 1).
+     - a = _d('0') = 0
+     - b = _d('0') = 0
+     - The result is _c(max(0, 0) - min(0, 0)) = _c(0) ...
+    Answer: 00,09
+
+  NB-Only RL, idx=3, func=None, correct=True, score=0.50
+    Candidates tried: 11, submitted: 2
+    Thinking (first 600 chars): Given the function `func_36`, we need to analyze how it processes the input string "00" and then determine other inputs that would result in the same output.
+
+For input "00":
+- Length of the string is 2.
+- We iterate over the string and calculate `max(a, b, c) - min(a, b, c)` for each pair of characters (where `c` is not used since it's a two-character string).
+- For i = 0: a = _d(s[0]) = _d('0') = 0, b = _d(s[1]) = _d('0') = 0
+  - The result is `max(0, 0) - min(0, 0) = 0`
+- For i = 1: a = _d(s[1]) = 0, b = _d(s[0]) = 0
+  - Again, the result is `max(0, 0) - min(0, 0) = 0`
+- Collecting all resu...
+    Answer: 00,04
+
+  Both RL, idx=215, func=None, correct=False, score=0.00
+    Candidates tried: 7, submitted: 2
+    Thinking (first 600 chars): Given the function `func_33`, we need to analyze how it processes the input string. The function splits the string into digits and performs a cyclic merge operation. Let's break down the steps for the input "77".
+
+1. The input string is "77".
+2. For the first digit '7' (at index 0), we will consider it paired with the second digit '7' (at index 1) and also '7' at index 0 due to the cyclic nature.
+3. We calculate `a = _d('7') = 7` and `b = _d('7') = 7`.
+4. Compute `u = min(a + b, 9) = min(7 + 7, 9) = min(14, 9) = 9`.
+5. Compute `v = abs(a - b) = abs(7 - 7) = 0`.
+6. Compute `out[0] = _c(min(u, v...
+    Answer: 79,97
+
+  Both RL, idx=215, func=None, correct=False, score=0.00
+    Candidates tried: 14, submitted: 0
+    Thinking (first 600 chars): <think>
+Given the function `main_solution(x)`, we can analyze `func_33(s)` to find the valid inputs. Let's consider `x = "77"`:
+
+1. The length of the string is 2, so `n = 2`.
+2. We need to iterate over the string, considering the circular nature:
+   - For `i = 0`, `a = 7`, `b = 7`.
+   - For `i = 1`, `a = 7`, `b = 7` (since it's circular).
+
+Let's break it down:
+- `a = 7`, `b = 7`
+- `u = min(7 + 7, 9) = min(14, 9) = 9`
+- `v = abs(7 - 7) = 0`
+- `out.append(min(9, 0)) = 0`
+
+So, `out = ['0', '0']`. Joining these gives `00` which is incorrect because we are looking for the input that results in `"77...
+    Answer: None
+
+
+==========================================================================================
+QUALITATIVE ANALYSIS: bijective_test
+==========================================================================================
+
+--- Reasoning Strategy Distribution ---
+
+  Model: SFT Baseline (400 responses, 2 correct [0.5%])
+    Systematic Inversion       105/400 (26.2%)  acc=1.0%
+    Enumeration/Trial            4/400 (1.0%)  acc=0.0%
+    Case Analysis                0/400 (0.0%)  acc=0.0%
+    Verification                52/400 (13.0%)  acc=3.8%
+    Pattern Matching            52/400 (13.0%)  acc=0.0%
+    Digit Manipulation         391/400 (97.8%)  acc=0.5%
+    Recognizes Uniqueness       15/400 (3.8%)  acc=6.7%
+    Mentions None                0/400 (0.0%)  acc=0.0%
+
+  Model: NB-Only RL (400 responses, 19 correct [4.8%])
+    Systematic Inversion        64/400 (16.0%)  acc=1.6%
+    Enumeration/Trial          373/400 (93.2%)  acc=4.8%
+    Case Analysis                0/400 (0.0%)  acc=0.0%
+    Verification               100/400 (25.0%)  acc=3.0%
+    Pattern Matching            52/400 (13.0%)  acc=0.0%
+    Digit Manipulation         372/400 (93.0%)  acc=4.8%
+    Recognizes Uniqueness       10/400 (2.5%)  acc=0.0%
+    Mentions None                1/400 (0.2%)  acc=0.0%
+
+  Model: Both RL (400 responses, 70 correct [17.5%])
+    Systematic Inversion       286/400 (71.5%)  acc=19.9%
+    Enumeration/Trial           32/400 (8.0%)  acc=12.5%
+    Case Analysis                0/400 (0.0%)  acc=0.0%
+    Verification               168/400 (42.0%)  acc=14.3%
+    Pattern Matching           113/400 (28.2%)  acc=39.8%
+    Digit Manipulation         398/400 (99.5%)  acc=17.6%
+    Recognizes Uniqueness       23/400 (5.8%)  acc=17.4%
+    Mentions None                4/400 (1.0%)  acc=25.0%
+
+--- Strategy Co-occurrence (Inversion & Enumeration) ---
+
+  SFT Baseline:
+    Inv+Enum:     2 (0.5%) acc=0.0%
+    Inv only:   103 (25.8%) acc=1.0%
+    Enum only:    2 (0.5%) acc=0.0%
+    Neither:    293 (73.2%) acc=0.3%
+
+  NB-Only RL:
+    Inv+Enum:    58 (14.5%) acc=0.0%
+    Inv only:     6 (1.5%) acc=16.7%
+    Enum only:  315 (78.8%) acc=5.7%
+    Neither:     21 (5.2%) acc=0.0%
+
+  Both RL:
+    Inv+Enum:    22 (5.5%) acc=13.6%
+    Inv only:   264 (66.0%) acc=20.5%
+    Enum only:   10 (2.5%) acc=10.0%
+    Neither:    104 (26.0%) acc=11.5%
+
+--- Error Mode Breakdown (incorrect responses only) ---
+
+  SFT Baseline (398 wrong responses):
+    Computation error (good strategy, bad math):  102 (25.6%)
+    Enumeration failure (tried guessing, failed):    2 (0.5%)
+    Inversion failure (unclear error):               0 (0.0%)
+    Format error (no candidates):                    1 (0.3%)
+    Truncated (hit max length):                      0 (0.0%)
+
+  NB-Only RL (381 wrong responses):
+    Computation error (good strategy, bad math):    5 (1.3%)
+    Enumeration failure (tried guessing, failed):  297 (78.0%)
+    Inversion failure (unclear error):               0 (0.0%)
+    Format error (no candidates):                   17 (4.5%)
+    Truncated (hit max length):                      0 (0.0%)
+
+  Both RL (330 wrong responses):
+    Computation error (good strategy, bad math):  210 (63.6%)
+    Enumeration failure (tried guessing, failed):    9 (2.7%)
+    Inversion failure (unclear error):               0 (0.0%)
+    Format error (no candidates):                   16 (4.8%)
+    Truncated (hit max length):                      0 (0.0%)
+
+--- Response Length by Correctness ---
+
+  SFT Baseline:
+    Correct: mean=1571 chars, median=1571
+    Wrong:   mean=1124 chars, median=1012
+    Ratio:   0.72x
+
+  NB-Only RL:
+    Correct: mean=11232 chars, median=11708
+    Wrong:   mean=10525 chars, median=10238
+    Ratio:   0.94x
+
+  Both RL:
+    Correct: mean=5178 chars, median=3698
+    Wrong:   mean=6721 chars, median=4616
+    Ratio:   1.30x
+
+
+──────────────────────────────────────────────────────────────────────────────────────────
+REPRESENTATIVE EXAMPLES
+──────────────────────────────────────────────────────────────────────────────────────────
+
+=== Category: Both-RL correct, NB-Only wrong ===
+
+  Problem idx=29, func=None, ref_output=72
+    Both-RL (correct, score=0.50): strategies=['inversion', 'digit-manip']
+      Thinking (first 500 chars): The function `main_solution(x)` essentially performs the following sequence of operations on the input string `x`:
+
+1. `_swap_halves(s)`: Swaps the two halves of the string. For an input of length 2, this effectively reverses the string.
+2. `_shift_mod3(s)`: Shifts each character in the string by adding 1 + the position modulo 3, wrapping around the digits 0-9.
+
+Given these operations, we can trace the steps for the input "72":
+
+1. **Swapping Halves**:
+   - Length of the string "72" is 2, so `_s...
+      Answer: 06,29
+    NB-Only (wrong, score=0.00): strategies=['inversion', 'enumeration', 'digit-manip']
+      Thinking (first 500 chars): <think>
+1. First, let's understand `func_19(s)`. It consists of two main operations:
+   - _swap_halves(s): This function splits the string into two halves and swaps them. If the length of the string is odd, the middle character is moved to the front of the second half.
+   - _shift_mod3(s): This function shifts each character in the string by its index modulo 3 plus 1, and then converts the result back to a character.
+
+2. Let's apply these operations to "72":
+   - _swap_halves("72"): Since the le...
+      Answer: None
+
+  Problem idx=69, func=None, ref_output=3991
+    Both-RL (correct, score=0.50): strategies=['inversion', 'digit-manip']
+      Thinking (first 500 chars): Given the function `func_19`, we can break down the operations as follows:
+
+1. `_swap_halves` is called on the input string, swapping the two halves:
+   - For "3991", the halves are "39" and "91". After swapping, we get "9139".
+2. `_shift_mod3` is then called on the string "9139" with a shift of 1, 2, 3, 1, 2, 3, ...:
+   - For the first character "9", the shift is 1, so "9" becomes `(_d("9") + 1) => (9 - 0 + 1) => 10 => _c(0) => "0"`.
+   - For the second character "1", the shift is 2, so "1" bec...
+      Answer: 6027,0360
+    NB-Only (wrong, score=0.00): strategies=['enumeration', 'digit-manip']
+      Thinking (first 500 chars): Let's break down the process step by step for the input "3991":
+
+1. **_swap_halves("3991")**:
+   - Length `n = 4`, so `mid = 2`.
+   - Result: "9139"
+
+2. **_shift_mod3("9139")**:
+   - For "9": `9 + (0 % 3) + 1 = 10` -> "0"
+   - For "1": `1 + (1 % 3) + 1 = 3` -> "3"
+   - For "3": `3 + (2 % 3) + 1 = 6` -> "6"
+   - For "9": `9 + (3 % 3) + 1 = 10` -> "0"
+   - Result: "0360"
+
+So, `func_19("3991")` results in "0360".
+
+991 does not return "3991" directly as we have seen with "3991", so we will check ano...
+      Answer: 3991,9991
+
+  Problem idx=70, func=None, ref_output=189860
+    Both-RL (correct, score=0.50): strategies=['inversion', 'digit-manip']
+      Thinking (first 500 chars): To solve this, we need to follow the steps of `func_19` in reverse for the given input "189860".
+
+1. **_swap_halves("189860")**: This swaps the two halves of the string.
+   - Length of "189860" is 6, so the halves are "189" and "860".
+   - After swapping, we get "860189".
+
+2. **_shift_mod3("860189")**: This shifts each digit by the value of its position in the sequence (0-based index) modulo 3, plus 1, and then applies _c to convert back to a string.
+   - Position 0: 8 + (0 % 3) + 1 = 9 -> _c(9)...
+      Answer: 747066,860189
+    NB-Only (wrong, score=0.00): strategies=['inversion', 'digit-manip']
+      Thinking (first 500 chars): To solve this problem, we need to break down the `func_19` function step by step.
+
+1. **_swap_halves(s: str) -> str:**
+   - The function takes the string `s` and swaps its two halves.
+   - For "189860":
+     - The length is 6, so the halves are "189" and "860".
+     - After swapping, we get "860189".
+
+2. **_shift_mod3(s: str) -> str:**
+   - This function applies a shift by 1 (mod 3) to each digit in the string.
+   - For "860189":
+     - The digit 8 becomes 9 (since (8 + 0 + 1) % 10 = 9)
+     - T...
+      Answer: 983290,639857
+
+=== Category: NB-Only correct, Both-RL wrong ===
+
+  Problem idx=1975, func=None, ref_output=48
+    NB-Only (correct, score=0.50): strategies=['enumeration']
+      Thinking (first 500 chars): Given the function `func_23`, it performs a right-to-left running sum with a +1 drift. Let's break down the process for the input "48":
+
+1. Initialize `state` to 0.
+2. Start from the rightmost digit and move left.
+   - For the last digit "8", `state` is updated as `state = (0 + _d("8") + 1) % 10 = (0 + 8 + 1) % 10 = 9`.
+   - For the next digit "4", `state` is updated as `state = (9 + _d("4") + 1) % 10 = (9 + 4 + 1) % 10 = 4`.
+
+The output string for "48" would be "49", but we need to find the inp...
+      Answer: 57,36
+    Both-RL (wrong, score=0.00): strategies=[]
+      Thinking (first 500 chars): The function `func_23` computes a right-to-left running sum where each intermediate state (from the end of the string towards the beginning) is incremented by 1 (the `extra` parameter is a lambda function that always returns 1). The state is then taken modulo 10 to get a digit, which is added to the output string. 
+
+Given `x = "48"`, let's trace the process:
+1. Start from the end of the string, with `i` beginning from `len(s)-1` (i.e., 2 for "48").
+2. For `i = 2` (last digit), the state is initi...
+      Answer: 86,67
+
+=== Category: Heavy Enumeration Examples ===
+
+  NB-Only RL, idx=29, func=None, correct=False, score=0.00
+    Candidates tried: 36, submitted: 0
+    Thinking (first 600 chars): <think>
+1. First, let's understand `func_19(s)`. It consists of two main operations:
+   - _swap_halves(s): This function splits the string into two halves and swaps them. If the length of the string is odd, the middle character is moved to the front of the second half.
+   - _shift_mod3(s): This function shifts each character in the string by its index modulo 3 plus 1, and then converts the result back to a character.
+
+2. Let's apply these operations to "72":
+   - _swap_halves("72"): Since the length is 2 (even), it swaps the halves directly. Result: "27".
+   - _shift_mod3("27"): For "2" (at in...
+    Answer: None
+
+  NB-Only RL, idx=29, func=None, correct=False, score=0.00
+    Candidates tried: 14, submitted: 2
+    Thinking (first 600 chars): Let's break down the process step by step for the input "72".
+
+1. **_swap_halves("72")**:
+   - Length of "72" is 2, so it's odd.
+   - The middle character is 2.
+   - Result: "27"
+
+2. **_shift_mod3("27")**:
+   - For each character, we calculate `_d(ch) + (i % 3) + 1`
+   - For "2": `_d("2") = ord("2") - ord("0") = 2`, index `i = 0` so `(0 % 3) = 0`, then `2 + 0 + 1 = 3`, and `chr(3 + ord("0")) = "3"`
+   - For "7": `_d("7") = ord("7") - ord("0") = 7`, index `i = 1` so `(1 % 3) = 1`, then `7 + 1 + 1 = 9`, and `chr(9 + ord("0")) = "9"`
+   - Result: "39"
+
+So, `func_19("72") = "39"`.
+
+We need to find...
+    Answer: 75,32
+
+  Both RL, idx=1004, func=None, correct=False, score=0.00
+    Candidates tried: 27, submitted: 2
+    Thinking (first 600 chars): Given the function `func_21`, we see that it takes a string `s` and applies a running sum operation where each digit changes according to the formula: `state = (state + d(ch) + 2) % 10`. The `d(ch)` function converts a character digit to an integer. 
+
+Let's break down the process step by step for the input "798":
+
+1. Initial state is 0.
+2. For "7":
+   - `state = (0 + 7 + 2) % 10 = 9`
+   - Append '9' to output.
+3. For "9":
+   - `state = (9 + 9 + 2) % 10 = 0`
+   - Append '0' to output.
+4. For "8":
+   - `state = (0 + 8 + 2) % 10 = 0`
+   - Append '0' to output.
+
+So the output for "798" is "900".
+
+...
+    Answer: 836,057
+
+  Both RL, idx=1102, func=None, correct=False, score=0.00
+    Candidates tried: 21, submitted: 2
+    Thinking (first 600 chars): Given the function `func_22`, it computes a running sum with an alternating +1/+2 drift. Let's break down the process for the input "910".
+
+1. Initialize `state` to 0.
+2. For each character in the string "910":
+   - Convert the character to its corresponding integer value using `_d`.
+   - Add the value and the alternating drift to `state` modulo 10.
+   - Append the new state value (converted back to a character) to the output list.
+
+For "910":
+- First character '9':
+  - state = (0 + 9 + 1) % 10 = 0
+  - output = "0"
+- Second character '1':
+  - state = (0 + 1 + 2) % 10 = 3
+  - output = "03"
+- Th...
+    Answer: 967,958
+
+
+==========================================================================================
+QUALITATIVE ANALYSIS: bijective_inverse
+==========================================================================================
+
+--- Reasoning Strategy Distribution ---
+
+  Model: SFT Baseline (400 responses, 0 correct [0.0%])
+    Systematic Inversion        27/400 (6.8%)  acc=0.0%
+    Enumeration/Trial            0/400 (0.0%)  acc=0.0%
+    Case Analysis                0/400 (0.0%)  acc=0.0%
+    Verification                16/400 (4.0%)  acc=0.0%
+    Pattern Matching            25/400 (6.2%)  acc=0.0%
+    Digit Manipulation         390/400 (97.5%)  acc=0.0%
+    Recognizes Uniqueness        6/400 (1.5%)  acc=0.0%
+    Mentions None                1/400 (0.2%)  acc=0.0%
+
+  Model: NB-Only RL (400 responses, 10 correct [2.5%])
+    Systematic Inversion       132/400 (33.0%)  acc=6.1%
+    Enumeration/Trial           98/400 (24.5%)  acc=5.1%
+    Case Analysis                0/400 (0.0%)  acc=0.0%
+    Verification               140/400 (35.0%)  acc=4.3%
+    Pattern Matching            35/400 (8.8%)  acc=5.7%
+    Digit Manipulation         370/400 (92.5%)  acc=2.7%
+    Recognizes Uniqueness       26/400 (6.5%)  acc=3.8%
+    Mentions None                2/400 (0.5%)  acc=0.0%
+
+  Model: Both RL (400 responses, 43 correct [10.8%])
+    Systematic Inversion       174/400 (43.5%)  acc=21.3%
+    Enumeration/Trial           10/400 (2.5%)  acc=10.0%
+    Case Analysis                0/400 (0.0%)  acc=0.0%
+    Verification                79/400 (19.8%)  acc=3.8%
+    Pattern Matching            76/400 (19.0%)  acc=34.2%
+    Digit Manipulation         380/400 (95.0%)  acc=11.3%
+    Recognizes Uniqueness       23/400 (5.8%)  acc=21.7%
+    Mentions None                1/400 (0.2%)  acc=0.0%
+
+--- Strategy Co-occurrence (Inversion & Enumeration) ---
+
+  SFT Baseline:
+    Inv+Enum:     0 (0.0%) acc=0.0%
+    Inv only:    27 (6.8%) acc=0.0%
+    Enum only:    0 (0.0%) acc=0.0%
+    Neither:    373 (93.2%) acc=0.0%
+
+  NB-Only RL:
+    Inv+Enum:    45 (11.2%) acc=8.9%
+    Inv only:    87 (21.8%) acc=4.6%
+    Enum only:   53 (13.2%) acc=1.9%
+    Neither:    215 (53.8%) acc=0.5%
+
+  Both RL:
+    Inv+Enum:     4 (1.0%) acc=0.0%
+    Inv only:   170 (42.5%) acc=21.8%
+    Enum only:    6 (1.5%) acc=16.7%
+    Neither:    220 (55.0%) acc=2.3%
+
+--- Error Mode Breakdown (incorrect responses only) ---
+
+  SFT Baseline (400 wrong responses):
+    Computation error (good strategy, bad math):   27 (6.8%)
+    Enumeration failure (tried guessing, failed):    0 (0.0%)
+    Inversion failure (unclear error):               0 (0.0%)
+    Format error (no candidates):                    0 (0.0%)
+    Truncated (hit max length):                      0 (0.0%)
+
+  NB-Only RL (390 wrong responses):
+    Computation error (good strategy, bad math):   83 (21.3%)
+    Enumeration failure (tried guessing, failed):   52 (13.3%)
+    Inversion failure (unclear error):               0 (0.0%)
+    Format error (no candidates):                    2 (0.5%)
+    Truncated (hit max length):                      0 (0.0%)
+
+  Both RL (357 wrong responses):
+    Computation error (good strategy, bad math):  133 (37.3%)
+    Enumeration failure (tried guessing, failed):    5 (1.4%)
+    Inversion failure (unclear error):               0 (0.0%)
+    Format error (no candidates):                    1 (0.3%)
+    Truncated (hit max length):                      0 (0.0%)
+
+--- Response Length by Correctness ---
+
+  NB-Only RL:
+    Correct: mean=5278 chars, median=5650
+    Wrong:   mean=3405 chars, median=1536
+    Ratio:   0.65x
+
+  Both RL:
+    Correct: mean=1964 chars, median=1561
+    Wrong:   mean=1916 chars, median=1421
+    Ratio:   0.98x
+
+
+──────────────────────────────────────────────────────────────────────────────────────────
+REPRESENTATIVE EXAMPLES
+──────────────────────────────────────────────────────────────────────────────────────────
+
+=== Category: Both-RL correct, NB-Only wrong ===
+
+  Problem idx=29, func=None, ref_output=72
+    Both-RL (correct, score=1.00): strategies=['inversion', 'digit-manip']
+      Thinking (first 500 chars): The function `func_19` does the following steps:
+1. Swaps the halves of the string.
+2. Adds a repeating pattern 1,2,3,1,2,3,...
+Let's break down the steps for the input "72":
+
+1. Swap halves: "72" -> "27"
+2. Apply the pattern 1,2,3,1,2,3,...:
+   - For "2": Add 1 ('2' + 1 % 10) -> '3'
+   - For "7": Add 2 ('7' + 2 % 10) -> '9'
+
+So, "27" becomes "39".
+
+Therefore, we expect that `func_19("27")` returns "39".
+
+Now, we need to find the input `x` for `main_solution(x)` which returns "72". This means we...
+      Answer: 06
+    NB-Only (wrong, score=0.00): strategies=['inversion', 'verification', 'digit-manip']
+      Thinking (first 500 chars): The function `func_19` involves two main steps: swapping the halves of the string and then shifting each character by a specific pattern.
+
+1. **Swapping halves**:
+   - For "72", the length is 2. So, swapping halves gives "27".
+
+2. **Shifting by the repeating pattern 1, 2, 3, 1, 2, 3, ...**:
+   - The function `_shift_mod3` shifts each character by its index modulo 3 plus 1.
+   - For "27":
+     - '2' -> index 0: `2 + 0 % 3 + 1 = 2 + 0 + 1 = 3` which is '3'
+     - '7' -> index 1: `7 + 1 % 3 + 1 = 7...
+      Answer: 17
+
+  Problem idx=69, func=None, ref_output=3991
+    Both-RL (correct, score=1.00): strategies=['inversion', 'digit-manip']
+      Thinking (first 500 chars): 1. First, let's break down the `func_19` function:
+   - It swaps the halves of the string.
+   - Then it adds a repeating pattern 1, 2, 3, 1, 2, 3, ... to the string.
+
+2. The input to `func_19` is "3991".
+3. The string "3991" has 4 characters, so swapping the halves gives us "9139".
+4. Now we need to apply the pattern 1, 2, 3, 1, 2, 3, ... to "9139".
+
+   - 9 corresponds to 9 + 1 % 10 = 0
+   - 1 corresponds to 1 + 2 % 10 = 3
+   - 3 corresponds to 3 + 3 % 10 = 6
+   - 9 corresponds to 9 + 1 % 10 = 0...
+      Answer: 6027
+    NB-Only (wrong, score=0.00): strategies=['inversion', 'enumeration', 'verification', 'digit-manip']
+      Thinking (first 500 chars): 1. First, let's break down the function `func_19` step by step:
+   - `_swap_halves(s)`: For the input "3991", the length is 4. So, the halves are "39" and "91". Swapping them gives "9139".
+   - `_shift_mod3(s)`: Starting with "9139", we apply the shift pattern (1, 2, 3, 1, 2, 3, ...). We'll do this for each character in "9139".
+     - For "9" (index 0), we shift by 1: `ord('9') - ord('0') + 1 = 9 - 0 + 1 = 10` → "0"
+     - For "1" (index 1), we shift by 2: `ord('1') - ord('0') + 2 = 1 - 0 + 2 = ...
+      Answer: 3991
+
+  Problem idx=70, func=None, ref_output=189860
+    Both-RL (correct, score=1.00): strategies=['inversion', 'digit-manip']
+      Thinking (first 500 chars): To solve this, we need to follow the steps described in the `func_19` function:
+
+1. **Swap the halves** of the string.
+2. **Shift each character** by adding a pattern of 1, 2, 3, 1, 2, 3, ... (mod 10).
+
+Let's break it down:
+
+### Swapping Halves:
+- Input: "189860"
+- Half lengths: 6 characters, so mid = 3.
+- After swapping halves, we get: "860189".
+
+### Applying the Shift Pattern:
+- "860189" is the string after swapping halves.
+- We need to shift each character by a pattern of 1, 2, 3, 1, 2, 3, .....
+      Answer: 747066
+    NB-Only (wrong, score=0.00): strategies=['inversion', 'verification', 'digit-manip']
+      Thinking (first 500 chars): To solve this, we need to follow the steps described in the `func_19` function:
+
+1. **Swap the halves** of the string.
+2. **Shift each character** by adding a value derived from its position and the repeating pattern 1, 2, 3, 1, 2, 3, ...
+
+Let's break it down step by step:
+
+- **Original string**: "189860"
+- **Step 1: Swap the halves**
+  - Length of the string is 6, so the midpoint is 3.
+  - The first half is "189", the second half is "860".
+  - After swapping, we get "860189".
+
+- **Step 2: Shift...
+      Answer: 189860
+
+=== Category: NB-Only correct, Both-RL wrong ===
+
+  Problem idx=808, func=None, ref_output=190
+    NB-Only (correct, score=1.00): strategies=[]
+      Thinking (first 500 chars): Given the function `main_solution(x)`, it ultimately calls `func_18(x)`, which performs the following steps:
+
+1. `_odd_front(s)` moves all odd-indexed characters to the front. For "190", this means moving the character at index 1 ('9') to the beginning, and the character at index 0 ('1') to the second position, resulting in "910".
+
+2. `_shift_halves(s, 1, 2, 3)` adds 1 to the left half, 2 to the right half, and adds 3 to the middle if the length is odd. For "910":
+   - Length is 3 (odd), so the ...
+      Answer: 608
+    Both-RL (wrong, score=0.00): strategies=['inversion']
+      Thinking (first 500 chars): The function `func_18` performs two main operations on the string `s`:
+1. It moves the odd-indexed characters to the front of the string.
+2. It shifts the characters in the string by adding a specific value based on the index: adds 1 for the left half, 2 for the right half, and 3 in the middle if needed.
+
+Let's break down the steps for the input "190":
+1. **Move odd-indexed characters to the front:**
+   - Original: "190"
+   - Odd-indexed characters: "9"
+   - Even-indexed characters: "10"
+   - Re...
+      Answer: 086
+
+=== Category: Heavy Enumeration Examples ===
+
+  NB-Only RL, idx=29, func=None, correct=False, score=0.00
+    Candidates tried: 45, submitted: 1
+    Thinking (first 600 chars): Let's break down the function calls step by step.
+
+1. `func_19(s: str) -> str` is defined to return the transformed string of `s` with two operations: swapping halves and then adding a repeating pattern `1, 2, 3, 1, 2, 3, ...`.
+
+2. `main_solution(x)` simply calls `func_19(x)`.
+
+Starting with `s = "72"`, let's apply the operations:
+
+- **Step 1: Swap Halves**
+  - Length of "72" is 2, so it becomes "27".
+
+- **Step 2: Add the Repeating Pattern 1, 2, 3, ...**
+  - The position of "2" is 0, so we add 1 (the first number in the pattern).
+  - The position of "7" is 1, so we add 2.
+  - Result: "39".
+
+No...
+    Answer: 35
+
+  NB-Only RL, idx=56, func=None, correct=False, score=0.00
+    Candidates tried: 18, submitted: 1
+    Thinking (first 600 chars): Given the function `func_23`, it performs a right-to-left running sum with a +1 drift. Let's break down the steps for the input "33518".
+
+1. Initialize `state` to 0.
+2. Start from the rightmost digit (8) and move left.
+3. For each digit, update `state` as follows: `state = (state + digit + 1) % 10`.
+4. Convert the new `state` back to a digit using `_c` and store it in the output string.
+
+Let's do the calculations step by step:
+
+- For "8":
+  `state = (0 + 8 + 1) % 10 = 9`
+  Output: "9"
+  
+- For "1":
+  `state = (9 + 1 + 1) % 10 = 1`
+  Output: "19"
+  
+- For "5":
+  `state = (1 + 5 + 1) % 10 = 7`
+ ...
+    Answer: 23501
+
+  Both RL, idx=233, func=None, correct=False, score=0.00
+    Candidates tried: 4, submitted: 1
+    Thinking (first 600 chars): Given the function `func_22`, it calculates the prefix sum with an alternating +1/+2 drift. The input string is iterated, and for each character, the state is updated as `state = (state + digit + (1 or 2)) % 10`. The output digit is then `state`.
+
+Let's break down the process for the input "021":
+
+1. Initialize state = 0.
+2. For the first character '0':
+   - state = (0 + _d('0') + 1) % 10 = (0 + 0 + 1) % 10 = 1
+   - Output digit = _c(1) = '1'
+
+3. For the second character '2':
+   - state = (1 + _d('2') + 2) % 10 = (1 + 2 + 2) % 10 = 5
+   - Output digit = _c(5) = '5'
+
+4. For the third character ...
+    Answer: 036
+
+
+==========================================================================================
+FOCUSED ANALYSIS: Bijective Test - Uniqueness Recognition
+==========================================================================================
+
+Model: SFT Baseline (N=8192 responses)
+  Correct:                     30 (0.4%)
+  Recognizes uniqueness:      368 (4.5%)
+  Correct + unique:             2 (0.0%)
+  Says 'None':                 20 (0.2%)
+  Two DIFFERENT candidates:  2538 (31.0%)
+  Two SAME candidates:        364 (4.4%)
+
+Model: NB-Only RL (N=8192 responses)
+  Correct:                    702 (8.6%)
+  Recognizes uniqueness:      239 (2.9%)
+  Correct + unique:            19 (0.2%)
+  Says 'None':                 38 (0.5%)
+  Two DIFFERENT candidates:  7788 (95.1%)
+  Two SAME candidates:         40 (0.5%)
+
+Model: Both RL (N=8192 responses)
+  Correct:                   1646 (20.1%)
+  Recognizes uniqueness:      332 (4.1%)
+  Correct + unique:            79 (1.0%)
+  Says 'None':                 31 (0.4%)
+  Two DIFFERENT candidates:  7495 (91.5%)
+  Two SAME candidates:        191 (2.3%)
+
+==========================================================================================
+QUALITATIVE ANALYSIS COMPLETE
+==========================================================================================
