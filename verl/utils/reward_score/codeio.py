@@ -376,7 +376,7 @@ def compute_score_backward(solution, ground_truth):
 
 _CODEIO_FUNC_ENV: dict[str, object] | None = None
 try:  # best-effort: only needed for `codeio-preimage-*`
-    from projects.datasets import create_string_data as _create_string_data  # type: ignore
+    from projects.generators import create_nonbijective as _create_string_data  # type: ignore
 
     _CODEIO_FUNC_ENV = {
         name: getattr(_create_string_data, name)
@@ -385,7 +385,7 @@ try:  # best-effort: only needed for `codeio-preimage-*`
     }
 
     # NB-v2 datasets still render functions as `func_{xx}` in prompts/reference code
-    # via `projects/datasets/create_string_data.py`'s `func_name_mapping`:
+    # via `projects/generators/create_nonbijective.py`'s `func_name_mapping`:
     #   nb_00..nb_24  ->  func_24..func_48
     #
     # At stage-2 runtime (where only `main_solution` is emitted), we must provide
@@ -422,7 +422,7 @@ def _build_codeio_ref_fn(ref_code: str, funcname: str) -> object:
 
 def compute_score_preimage(solution, ground_truth):
     if _CODEIO_FUNC_ENV is None:
-        print("[Error] codeio-preimage requires `projects.datasets.create_string_data` to be importable.")
+        print("[Error] codeio-preimage requires `projects.generators.create_nonbijective` to be importable.")
         return -1, 0
 
     ref_output = ground_truth["ref_output"]

@@ -1,221 +1,146 @@
-<div align="center">
+# RL Meta-Thinking on Bijective + Non-Bijective Function Tasks
 
-# From f(x) and g(x) to f(g(x)): LLMs Learn New Skills in RL by Composing Old Ones
+Minimal pipeline to reproduce the SFT + RL experiments on digit-string function
+inversion. The setup co-trains a Qwen2.5-7B-Instruct model on two function
+families (24 bijective + 25 non-bijective) and then runs RL with the function
+implementations *hidden* from the prompt, so the model has to recall them from
+the SFT phase.
 
-[![Paper](https://img.shields.io/badge/Paper-A42C25?style=for-the-badge&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2509.25123) [![Notion](https://img.shields.io/badge/Notion-%23000000.svg?style=for-the-badge&logo=notion&logoColor=white)](https://husky-morocco-f72.notion.site/From-f-x-and-g-x-to-f-g-x-LLMs-Learn-New-Skills-in-RL-by-Composing-Old-Ones-2499aba4486f802c8108e76a12af3020) [![Hugging Face Collection](https://img.shields.io/badge/Dataset&Model-fcd022?style=for-the-badge&logo=huggingface&logoColor=000)](https://huggingface.co/collections/weizechen/rl-compositionality-68f2391946d9a68ae279aceb) [![Github](https://img.shields.io/badge/GitHub-000000?style=for-the-badge&logo=github&logoColor=000&logoColor=white)](https://github.com/PRIME-RL/RL-Compositionality) [![Twitter](https://img.shields.io/badge/Twitter-%23000000.svg?style=for-the-badge&logo=twitter&logoColor=white)](https://x.com/lifan__yuan/status/1963662222602723673)
-</div>
+The two RL experiments that this repo is set up for:
 
-📘 This repository contains the code accompanying the paper **"FROM $f(x)$ AND $g(x)$ TO $f(g(x))$: LLMs Learn New Skills in RL by Composing Old Ones"**. The repo is built upon [veRL](https://github.com/volcengine/verl), and we provide the synthetic data generators and training pipelines required to reproduce results reported in the paper.
+- **Non-bijective only** — RL fine-tune on non-bijective preimage tasks alone.
+- **Co-training** — RL fine-tune on bijective + non-bijective tasks together.
 
-⚡ The repository is organized around reproducible bash entrypoints located in [`bash/`](bash), grouped by the paper sections they support.
-
----
-
-## 🗂️ Table of Contents
-- [⚙️ Environment Setup](#️-environment-setup)
-- [📁 Repository Layout](#-repository-layout)
-- [🧑‍🏫 Stage 1: Atomic Skill Acquisition](#-stage-1-atomic-skill-acquisition)
-- [🧩 Stage 2: Learning Compositional Skills](#-stage-2-learning-compositional-skills)
-  - [🤖 RL Variants (Sections 4.1 & 4.2)](#-rl-variants-sections-41--42)
-  - [📊 RFT Baseline (Section 4.2)](#-rft-baseline-section-42)
-- [🔀 Cross-Task Transfer to Countdown (Section 4.3)](#-cross-task-transfer-to-countdown-section-43)
-- [📈 Pass@k Analysis (Sections 4.4)](#-passk-analysis-sections-44)
-- [📚 Citing](#-citing)
+Training engine: a trimmed copy of [veRL](https://github.com/volcengine/verl)
+under `verl/`. All custom data generation lives under `projects/`.
 
 ---
 
-## ⚙️ Environment Setup
+## Environment setup
 
-1. **Clone the repository** 📥
-   ```bash
-   git clone https://github.com/PRIME-RL/RL-Compositionality.git
-   cd RL-Compositionality
-   ```
-
-2. **Create a Python environment** 🧑‍💻 (Python ≥ 3.10 recommended, tested with 3.12)
+1. Clone the repository and create a Python environment (Python 3.10+ tested).
 
    ```bash
-   virtualenv rl_comp
-   source rl_comp/bin/activate
+   git clone <repo-url> rl_meta_thinking
+   cd rl_meta_thinking
+   virtualenv .venv && source .venv/bin/activate
    pip install -e .
-   pip install flash-attn --no-build-isolation
    ```
 
-3. **Login to Wandb** 🔑
+2. Pin the two libraries that the pipeline expects:
+
+   ```bash
+   pip install "transformers==4.43"
+   pip install "flash-attn==2.7.4.post1" --no-build-isolation
+   ```
+
+3. Authenticate with Weights & Biases (training jobs log there):
 
    ```bash
    export WANDB_API_KEY="..."
    ```
 
-4. **Model checkpoints** 📂
-   Update `MODEL_PATH` variables inside the bash scripts if your checkpoint is stored elsewhere.
+4. Download the base model into the path the pipeline expects:
+
+   ```bash
+   mkdir -p disk/models
+   hf download --local-dir disk/models/Qwen2.5-7B-Instruct Qwen/Qwen2.5-7B-Instruct
+   ```
+
+   (Or symlink your existing checkpoint to `disk/models/Qwen2.5-7B-Instruct`.)
 
 ---
 
-## 📁 Repository Layout
+## Repository layout
 
-* [`bash/`](bash): One-click pipelines grouped by paper section numbers.
+```
+projects/
+├── atomic_functions.py          # bijective func library (func_00..23)
+├── generators/                  # data generators
+│   ├── create_bijective.py                 # bijective stage-1 / stage-2 data
+│   ├── create_bijective_multi_response.py  # bijective stage-2 multi-response
+│   ├── create_nonbijective.py              # non-bijective func library + stage-1 data
+│   ├── create_nonbijective_multi.py        # non-bijective multi-preimage helpers
+│   ├── create_multi_response_with_none.py  # non-bijective stage-2 multi-response
+│   └── diverse_evals/                      # extra evaluation slices
+├── pipelines/                   # one-shot bash launchers
+│   ├── stage0/                  # rejection-sampling SFT data
+│   ├── stage1/                  # SFT training
+│   └── stage2/                  # RL training (this is the headline experiment)
+└── tools/
+    ├── rft_data.py                          # filter rollouts into SFT data
+    └── merge_latest_sft_checkpoint.py       # promote latest SFT step to a stable dir
 
-  * [`section41_42/`](bash/section41_42): Data generation, Stage 1 RFT, Stage 2 RL/RFT experiments.
-  * [`section43/`](bash/section43): Countdown data generation and transfer experiments.
-  * [`section44/`](bash/section44): Pass@k evaluation utilities.
-* [`examples/`](examples): Python entrypoints used by the bash scripts.
-
----
-
-## 🧑‍🏫 Stage 1: Atomic Skill Acquisition
-
-Stage 1 corresponds to rejection fine-tuning (RFT) on tasks where the function definitions are visible. The process produces a Stage 1 checkpoint that serves as the initialization for all Stage 2 experiments.
-
-You can directly download our [Stage-1 RFT training data](https://huggingface.co/datasets/weizechen/RL-Compositionality-Stage1-RFT-Data) on 🤗Huggingface. 
-```bash
-hf download --repo-type dataset --local-dir data/string_task/stage1_level1/rft_data weizechen/RL-Compositionality-Stage1-RFT-Data
+verl/                            # training engine (vendored)
+examples/grpo_trainer/template.sh # GRPO entrypoint used by stage 2
+examples/sft/template.sh         # SFT entrypoint used by stage 1
+scripts/model_merger.py          # post-RL FSDP shard merger
 ```
 
-<details>
-<summary>Alternatively, you can create the problems and collect the RFT data by yourself</summary>
-  
-1. **Generate synthetic training data**
-
-   ```bash
-   bash bash/section41_42/stage1_create_problems.sh
-   ```
-
-   This script populates `data/string_task/stage1_level1/` with train and test Parquet files containing atomic string transformations (the test Parquet is actually not used in the experiment).
-
-2. **Collect rollouts & convert into RFT datasets**
-
-   ```bash
-   bash bash/section41_42/stage1_create_train_data.sh
-   ```
-
-   The script samples `N_SAMPLES` responses per prompt and stores them in `data/string_task/stage1_level1/rollout.parquet`. And then filters the rollouts based on the accuracy and emits `train.parquet` / `test.parquet` splits under `data/string_task/stage1_level1/rft_data/`.
-
-   To visualize a rollout parquet as an HTML table (prompt / reward info / referenced `func_XX` code / responses), run:
-
-   ```bash
-   python scripts/rollout_to_html.py data/string_task/stage1_level1/rollout.parquet -o rollout.html
-   ```
-</details>
-
-Then train the `Llama 3.1 8B Instruct` model with the RFT data:
-```bash
-bash bash/section41_42/stage1_rft.sh
-```
-
-The resulting checkpoint is saved to `checkpoints/string-task/stage1-rft/` and initializes every Stage 2 run.
-
 ---
 
-## 🧩 Stage 2: Learning Compositional Skills
+## Pipeline
 
-Stage 2 removes access to function implementations and focuses on compositional reasoning. **All scripts assume that `bash/section41_42/stage1_rft.sh` has been executed successfully.**
+### Stage 0 — rejection-sampling SFT data
 
-
-### 🤖 RL Variants (Sections 4.1 & 4.2)
-
-Download the RL training and evaluation dataset from 🤗Huggingface
+Generate stage-1 (with-code) problems for both function families, sample 10
+rollouts per prompt from Qwen2.5-7B-Instruct, and filter into RFT splits.
 
 ```bash
-# Training
-hf download --repo-type dataset --local-dir data/string_task/stage2_level1 weizechen/RL-Compositionality-Stage2-RL-Level1-TrainData
-hf download --repo-type dataset --local-dir data/string_task/stage2_level2 weizechen/RL-Compositionality-Stage2-RL-Level2-TrainData
-
-# Evaluation
-hf download --repo-type dataset --local-dir data/string_task/stage2_level1to8 weizechen/RL-Compositionality-Stage2-RL-Level2-TestData
+bash projects/pipelines/stage0/run_rejection_sampling_pipeline.sh
 ```
 
-<details>
-<summary>Alternatively, you can create the problems yourself</summary>
+Output:
+- `data/stage1_bijective/rft_data/{train,test}.parquet`
+- `data/stage1_nonbijective/rft_data/{train,test}.parquet`
 
-   ```bash
-   bash bash/section41_42/stage2_create_problems.sh
-   ```
+You can also run the bijective and non-bijective halves individually
+(`create_*_problems.sh` → `rejection_sampling_*.sh` → `rft_*.sh`).
 
-   ➡️ Generates Level-1, Level-2 training splits and a Level-1-to-8 evaluation split.
+### Stage 1 — SFT (RFT) on the combined dataset
 
-</details>
-
-Launch RL training with your desired setting:
+Merge the two RFT splits (1/3 of each), train SFT, then promote the latest
+checkpoint.
 
 ```bash
-bash bash/section41_42/stage2_rl_level1.sh      # Level-1 only
-bash bash/section41_42/stage2_rl_level2.sh      # Level-2 only
-bash bash/section41_42/stage2_rl_level1to2.sh   # Mixed Level-1+2
+bash projects/pipelines/stage1/merge_sft_data.sh
+bash projects/pipelines/stage1/train_sft.sh
+bash projects/pipelines/stage1/merge_sft_model.sh
 ```
 
-### 📊 RFT Baseline (Section 4.2)
+Output checkpoint: `disk/models/reasoning-data/stage1-rft-qwen2.5-7b-instruct/`
 
-To compare RL with supervised rejection fine-tuning:
+### Stage 2 — RL
 
-1. **Partition Level-2 data into iterative RFT chunks**
+Generate stage-2 RL training/eval data (prompts contain *no* function code; the
+model must rely on the function semantics it learned during SFT).
 
-   ```bash
-   bash bash/section41_42/stage2_rft_create_problems.sh
-   ```
+```bash
+bash projects/pipelines/stage2/prepare_data.sh
+```
 
-2. **Collect rollouts & convert them into RFT datasets**
+Output:
+- `data/stage2/{bijective,nonbijective}/{train,test}.parquet`
+- `data/stage2/bijective_inverse/{train,test}.parquet`
+- `data/eval/{long_outputs,more_candidates,long_outputs_more_candidates,lenchange_functions}/test.parquet`
 
-   ```bash
-   bash bash/section41_42/stage2_rft_create_train_data.sh
-   ```
+Then launch one of the two RL experiments:
 
-3. **Fine-tune with Stage 1 checkpoint**
+```bash
+# RL on non-bijective only
+bash projects/pipelines/stage2/rl_nonbijective_only.sh
 
-   ```bash
-   bash bash/section41_42/stage2_rft_train.sh
-   ```
+# RL co-training on bijective + non-bijective
+bash projects/pipelines/stage2/rl_both_funcs.sh
+```
 
-4. **Iterative RFT** 🔁
-   Repeat steps 2–3 with updated model/data paths.
+Each script runs 160 GRPO steps on 8 GPUs by default; tune `NNODES`,
+`MODEL_PATH`, `TRAIN_FILES`, `VAL_FILES`, or `SAVE_DIR` to relocate.
 
----
+After training finishes, merge FSDP shards back into a HuggingFace-format
+checkpoint:
 
-## 🔀 Cross-Task Transfer to Countdown (Section 4.3)
-
-1. **Generate Countdown arithmetic datasets** 
-
-   ```bash
-   bash bash/section43/create_countdown_data.sh
-   ```
-
-2. **Collect rollouts & convert to RFT data**
-
-   ```bash
-   bash bash/section43/stage1_collect_train_data.sh
-   ```
-
-   The script will collect model's rollout on Countdown Level 2 problems, filter according to the accuracy, merge them with string task RFT data, and save to `data/string_countdown_task/stage1_rft_data/`
-
-3. **Train the model** 🏋️
-   You can reuse the script from `bash/section41_42/stage1_rft.sh`, and change the data path to `data/string_countdown_task/stage1_rft_data`.
-
-The Stage 2 training is the same as Section 4.1/4.2. You can reuse the scripts and change the model path.
-
----
-
-## 📈 Pass@k Analysis (Sections 4.4)
-
-1. **1000 Rollout Collection**
-
-   ```bash
-   bash bash/section44/passk.sh
-   ```
-
-   This command samples completions from a trained policy, saves them to `results/stage2_rl_level1/all.parquet`, and enables downstream computation of pass@k metrics. Change the model path to obtain the 1000 responses from other models.
-
----
-
-## 📚 Citing
-
-If you build upon this work, please cite the accompanying paper:
-
-```bibtex
-@article{yuan2025rlcompose,
-  author    = {Lifan Yuan and Weize Chen and Yuchen Zhang and Ganqu Cui and Hanbin Wang and Ziming You and Ning Ding and Zhiyuan Liu and Maosong Sun and Hao Peng},
-  title     = {From $f(x)$ and $g(x)$ to $f(g(x))$: {LLMs} Learn New Skills in {RL} by Composing Old Ones},
-  journal   = {arXiv preprint arXiv:2509.25123},
-  year      = {2025},
-  url       = {https://arxiv.org/abs/2509.25123}
-}
+```bash
+python3 scripts/model_merger.py \
+    --local_dir disk/checkpoints/reasoning-data-rl/<experiment_name>/global_step_<N>/actor
 ```

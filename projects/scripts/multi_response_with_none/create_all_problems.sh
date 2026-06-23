@@ -1,2 +1,0 @@
-bash projects/scripts/multi_response_with_none/create_bijective_problems.sh
-bash projects/scripts/multi_response_with_none/create_nonbijective_problems.sh
