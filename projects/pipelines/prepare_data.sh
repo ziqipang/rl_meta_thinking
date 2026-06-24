@@ -1,18 +1,21 @@
 #!/usr/bin/env bash
-# Generate stage-2 RL training and evaluation data.
+# Generate RL training and evaluation data.
+#
+# All prompts include the function source code (stage=1) because RL starts
+# directly from Qwen2.5-7B-Instruct without any SFT warm-up.
 #
 # Data generated:
-#   1. Bijective multi-response (prompt: no code, ref_code: full code)
-#   2. Non-bijective multi-response (prompt: no code, scorer resolves via env)
-#   3. Bijective inverse (for evaluation)
-#   4. Diverse evaluation sets (non-bijective)
+#   1. Bijective multi-response (training + eval)
+#   2. Non-bijective multi-response (training + eval)
+#   3. Bijective inverse (eval only)
+#   4. Diverse non-bijective evaluation slices
 set -euo pipefail
 set -x
 
 DATA_ROOT=data/stage2
 EVAL_ROOT=data/eval
 
-# ---- 1. Bijective multi-response (stage 2 prompt, stage 1 ref_code) ----
+# ---- 1. Bijective multi-response ----
 mkdir -p ${DATA_ROOT}/bijective
 python3 projects/generators/create_bijective_multi_response.py \
     --save_path ${DATA_ROOT}/bijective/train.parquet \
@@ -30,11 +33,12 @@ python3 projects/generators/create_bijective_multi_response.py \
     --data_num 2048 \
     --num_answers 2
 
-# ---- 2. Non-bijective multi-response (stage 2, balanced split) ----
+# ---- 2. Non-bijective multi-response ----
 mkdir -p ${DATA_ROOT}/nonbijective
 python3 projects/generators/create_multi_response_with_none.py \
     --save_path ${DATA_ROOT}/nonbijective/train.parquet \
-    --stage 2 \
+    --stage 1 \
+    --stage1_pool split \
     --split train \
     --function_kind nonbijective_v2 \
     --nb_v2_split balanced \
@@ -45,7 +49,8 @@ python3 projects/generators/create_multi_response_with_none.py \
 
 python3 projects/generators/create_multi_response_with_none.py \
     --save_path ${DATA_ROOT}/nonbijective/test.parquet \
-    --stage 2 \
+    --stage 1 \
+    --stage1_pool split \
     --split test \
     --function_kind nonbijective_v2 \
     --nb_v2_split balanced \
@@ -54,21 +59,11 @@ python3 projects/generators/create_multi_response_with_none.py \
     --data_num 1024 \
     --num_answers 2
 
-# ---- 3. Bijective inverse (stage 2, for evaluation) ----
+# ---- 3. Bijective inverse (eval only) ----
 mkdir -p ${DATA_ROOT}/bijective_inverse
 python3 projects/generators/create_bijective.py \
-    --save_path ${DATA_ROOT}/bijective_inverse/train.parquet \
-    --stage 2 \
-    --split train \
-    --direction backward \
-    --function_kind bijective \
-    --min_level 1 \
-    --max_level 1 \
-    --data_num 50000
-
-python3 projects/generators/create_bijective.py \
     --save_path ${DATA_ROOT}/bijective_inverse/test.parquet \
-    --stage 2 \
+    --stage 1 \
     --split test \
     --direction backward \
     --function_kind bijective \
@@ -76,12 +71,12 @@ python3 projects/generators/create_bijective.py \
     --max_level 1 \
     --data_num 2048
 
-# ---- 4. Diverse non-bijective evaluation sets ----
+# ---- 4. Diverse non-bijective evaluation slices ----
 if [ ! -f ${EVAL_ROOT}/more_candidates/test.parquet ]; then
     mkdir -p ${EVAL_ROOT}/more_candidates
     python3 projects/generators/diverse_evals/create_multi_preimage_eval.py \
         --save_path ${EVAL_ROOT}/more_candidates/test.parquet \
-        --stage 2 \
+        --stage 1 \
         --split test \
         --function_kind nonbijective_v2 \
         --nb_v2_split balanced \
@@ -100,7 +95,7 @@ if [ ! -f ${EVAL_ROOT}/long_outputs/test.parquet ]; then
     mkdir -p ${EVAL_ROOT}/long_outputs
     python3 projects/generators/diverse_evals/create_multi_preimage_eval.py \
         --save_path ${EVAL_ROOT}/long_outputs/test.parquet \
-        --stage 2 \
+        --stage 1 \
         --split test \
         --function_kind nonbijective_v2 \
         --nb_v2_split balanced \
@@ -120,7 +115,7 @@ if [ ! -f ${EVAL_ROOT}/long_outputs_more_candidates/test.parquet ]; then
     mkdir -p ${EVAL_ROOT}/long_outputs_more_candidates
     python3 projects/generators/diverse_evals/create_multi_preimage_eval.py \
         --save_path ${EVAL_ROOT}/long_outputs_more_candidates/test.parquet \
-        --stage 2 \
+        --stage 1 \
         --split test \
         --function_kind nonbijective_v2 \
         --nb_v2_split balanced \
@@ -148,4 +143,4 @@ if [ ! -f ${EVAL_ROOT}/lenchange_functions/test.parquet ]; then
         --num_answers_max 5
 fi
 
-echo "All stage-2 data prepared."
+echo "All RL data prepared."

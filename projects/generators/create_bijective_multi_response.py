@@ -1,12 +1,9 @@
 """
-Bijective multi-response inverse generator (stage-2 prompt, stage-1 ref_code).
+Bijective multi-response inverse generator (code-in-prompt).
 
-- PROMPT:   stage=2 (only ``def main_solution(x): return func_XX(x)``), so the
-            model must recall function semantics from SFT rather than reading code.
-- ref_code: stage=1 (full source code), so the reward scorer can execute the
-            reference implementation directly without needing the bijective
-            function environment loaded (the default scorer env only has the
-            non-bijective functions baked in).
+Both prompt code and reference code use stage=1 (full source). RL starts from
+Qwen2.5-7B-Instruct without an SFT warm-up, so the function code is in the
+prompt and the model can read it directly.
 """
 
 from __future__ import annotations
@@ -85,8 +82,9 @@ def _generate_bijective_sample(
     if not isinstance(output, str):
         return None
 
-    # Prompt code: stage=2 (no helper source code — model must recall from SFT).
-    prompt_code = base.generate_full_code(expr, stage=2, custom_functions=custom_functions)
+    # Prompt code: stage=1 (full source code — RL starts from Qwen2.5-Instruct
+    # without SFT, so the model must read the function code from the prompt).
+    prompt_code = base.generate_full_code(expr, stage=1, custom_functions=custom_functions)
     # Reference code: stage=1 (full source code — scorer can execute independently).
     ref_code = base.generate_full_code(expr, stage=1, custom_functions=custom_functions)
 

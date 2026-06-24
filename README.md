@@ -1,24 +1,24 @@
-# RL Meta-Thinking on Bijective + Non-Bijective Function Tasks
+# RL on Bijective + Non-Bijective Function Tasks
 
-Minimal pipeline to reproduce the SFT + RL experiments on digit-string function
-inversion. The setup co-trains a Qwen2.5-7B-Instruct model on two function
-families (24 bijective + 25 non-bijective) and then runs RL with the function
-implementations *hidden* from the prompt, so the model has to recall them from
-the SFT phase.
+Minimal pipeline to run GRPO reinforcement learning on digit-string function
+inversion tasks, starting directly from Qwen2.5-7B-Instruct.
 
-The two RL experiments that this repo is set up for:
+The function code is included in every prompt, so no SFT warm-up is needed —
+GRPO runs on top of the base instruct model.
 
-- **Non-bijective only** — RL fine-tune on non-bijective preimage tasks alone.
-- **Co-training** — RL fine-tune on bijective + non-bijective tasks together.
+Two RL experiments are set up:
 
-Training engine: a trimmed copy of [veRL](https://github.com/volcengine/verl)
+- **Non-bijective only** — train on non-bijective preimage tasks alone.
+- **Co-training** — train on bijective + non-bijective tasks together.
+
+The training engine is a trimmed copy of [veRL](https://github.com/volcengine/verl)
 under `verl/`. All custom data generation lives under `projects/`.
 
 ---
 
 ## Environment setup
 
-1. Clone the repository and create a Python environment (Python 3.10+ tested).
+1. Clone and create a Python environment (Python 3.10+ tested).
 
    ```bash
    git clone <repo-url> rl_meta_thinking
@@ -27,14 +27,14 @@ under `verl/`. All custom data generation lives under `projects/`.
    pip install -e .
    ```
 
-2. Pin the two libraries that the pipeline expects:
+2. Pin the two libraries the pipeline expects:
 
    ```bash
    pip install "transformers==4.43"
    pip install "flash-attn==2.7.4.post1" --no-build-isolation
    ```
 
-3. Authenticate with Weights & Biases (training jobs log there):
+3. Authenticate with Weights & Biases:
 
    ```bash
    export WANDB_API_KEY="..."
@@ -57,88 +57,51 @@ under `verl/`. All custom data generation lives under `projects/`.
 projects/
 ├── atomic_functions.py          # bijective func library (func_00..23)
 ├── generators/                  # data generators
-│   ├── create_bijective.py                 # bijective stage-1 / stage-2 data
-│   ├── create_bijective_multi_response.py  # bijective stage-2 multi-response
-│   ├── create_nonbijective.py              # non-bijective func library + stage-1 data
+│   ├── create_bijective.py                 # bijective forward / inverse data
+│   ├── create_bijective_multi_response.py  # bijective multi-response
+│   ├── create_nonbijective.py              # non-bijective func library + base generator
 │   ├── create_nonbijective_multi.py        # non-bijective multi-preimage helpers
-│   ├── create_multi_response_with_none.py  # non-bijective stage-2 multi-response
+│   ├── create_multi_response_with_none.py  # non-bijective multi-response
 │   └── diverse_evals/                      # extra evaluation slices
-├── pipelines/                   # one-shot bash launchers
-│   ├── stage0/                  # rejection-sampling SFT data
-│   ├── stage1/                  # SFT training
-│   └── stage2/                  # RL training (this is the headline experiment)
-└── tools/
-    ├── rft_data.py                          # filter rollouts into SFT data
-    └── merge_latest_sft_checkpoint.py       # promote latest SFT step to a stable dir
+└── pipelines/
+    ├── prepare_data.sh                     # generate RL train + eval data
+    ├── rl_nonbijective_only.sh             # GRPO on non-bijective only
+    └── rl_both_funcs.sh                    # GRPO co-training on both families
 
 verl/                            # training engine (vendored)
-examples/grpo_trainer/template.sh # GRPO entrypoint used by stage 2
-examples/sft/template.sh         # SFT entrypoint used by stage 1
+examples/grpo_trainer/template.sh # GRPO entrypoint used by RL scripts
 scripts/model_merger.py          # post-RL FSDP shard merger
 ```
 
 ---
 
-## Pipeline
+## Run the pipeline
 
-### Stage 0 — rejection-sampling SFT data
-
-Generate stage-1 (with-code) problems for both function families, sample 10
-rollouts per prompt from Qwen2.5-7B-Instruct, and filter into RFT splits.
+### Step 1 — generate RL data
 
 ```bash
-bash projects/pipelines/stage0/run_rejection_sampling_pipeline.sh
+bash projects/pipelines/prepare_data.sh
 ```
 
-Output:
-- `data/stage1_bijective/rft_data/{train,test}.parquet`
-- `data/stage1_nonbijective/rft_data/{train,test}.parquet`
+Outputs:
+- `data/stage2/{bijective,nonbijective}/{train,test}.parquet` — training + eval
+- `data/stage2/bijective_inverse/test.parquet` — bijective inverse eval
+- `data/eval/{long_outputs,more_candidates,long_outputs_more_candidates,lenchange_functions}/test.parquet` — diverse non-bijective evals
 
-You can also run the bijective and non-bijective halves individually
-(`create_*_problems.sh` → `rejection_sampling_*.sh` → `rft_*.sh`).
+### Step 2 — launch GRPO
 
-### Stage 1 — SFT (RFT) on the combined dataset
-
-Merge the two RFT splits (1/3 of each), train SFT, then promote the latest
-checkpoint.
-
-```bash
-bash projects/pipelines/stage1/merge_sft_data.sh
-bash projects/pipelines/stage1/train_sft.sh
-bash projects/pipelines/stage1/merge_sft_model.sh
-```
-
-Output checkpoint: `disk/models/reasoning-data/stage1-rft-qwen2.5-7b-instruct/`
-
-### Stage 2 — RL
-
-Generate stage-2 RL training/eval data (prompts contain *no* function code; the
-model must rely on the function semantics it learned during SFT).
-
-```bash
-bash projects/pipelines/stage2/prepare_data.sh
-```
-
-Output:
-- `data/stage2/{bijective,nonbijective}/{train,test}.parquet`
-- `data/stage2/bijective_inverse/{train,test}.parquet`
-- `data/eval/{long_outputs,more_candidates,long_outputs_more_candidates,lenchange_functions}/test.parquet`
-
-Then launch one of the two RL experiments:
+Each script runs 200 GRPO steps on 8 GPUs by default. Tune `NNODES`,
+`MODEL_PATH`, `TRAIN_FILES`, `VAL_FILES`, or `SAVE_DIR` in the script to relocate.
 
 ```bash
 # RL on non-bijective only
-bash projects/pipelines/stage2/rl_nonbijective_only.sh
+bash projects/pipelines/rl_nonbijective_only.sh
 
 # RL co-training on bijective + non-bijective
-bash projects/pipelines/stage2/rl_both_funcs.sh
+bash projects/pipelines/rl_both_funcs.sh
 ```
 
-Each script runs 160 GRPO steps on 8 GPUs by default; tune `NNODES`,
-`MODEL_PATH`, `TRAIN_FILES`, `VAL_FILES`, or `SAVE_DIR` to relocate.
-
-After training finishes, merge FSDP shards back into a HuggingFace-format
-checkpoint:
+### Step 3 — merge the FSDP checkpoint (after training)
 
 ```bash
 python3 scripts/model_merger.py \
