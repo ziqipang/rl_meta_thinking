@@ -84,8 +84,8 @@ bash projects/pipelines/prepare_data.sh
 ```
 
 Outputs:
-- `data/stage2/{bijective,nonbijective}/{train,test}.parquet` — training + eval
-- `data/stage2/bijective_inverse/test.parquet` — bijective inverse eval
+- `data/stage2/{bijective,nonbijective}/{train,test}.parquet` — training + in-domain eval (multi-response prompts)
+- `data/eval/bijective_inverse/test.parquet` — bijective single-answer inverse eval
 - `data/eval/{long_outputs,more_candidates,long_outputs_more_candidates,lenchange_functions}/test.parquet` — diverse non-bijective evals
 
 ### Step 2 — launch GRPO

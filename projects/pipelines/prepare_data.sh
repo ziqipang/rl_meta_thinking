@@ -7,8 +7,7 @@
 # Data generated:
 #   1. Bijective multi-response (training + eval)
 #   2. Non-bijective multi-response (training + eval)
-#   3. Bijective inverse (eval only)
-#   4. Diverse non-bijective evaluation slices
+#   3. Eval-only slices: bijective single-answer inverse + diverse non-bijective
 set -euo pipefail
 set -x
 
@@ -59,10 +58,10 @@ python3 projects/generators/create_multi_response_with_none.py \
     --data_num 1024 \
     --num_answers 2
 
-# ---- 3. Bijective inverse (eval only) ----
-mkdir -p ${DATA_ROOT}/bijective_inverse
+# ---- 3. Bijective single-answer inverse (eval only) ----
+mkdir -p ${EVAL_ROOT}/bijective_inverse
 python3 projects/generators/create_bijective.py \
-    --save_path ${DATA_ROOT}/bijective_inverse/test.parquet \
+    --save_path ${EVAL_ROOT}/bijective_inverse/test.parquet \
     --stage 1 \
     --split test \
     --direction backward \
